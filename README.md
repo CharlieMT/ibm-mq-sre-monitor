@@ -39,7 +39,7 @@ mq_app_bash/
     Clone the repository:
     Bash
 
-    git clone [https://github.com/yourusername/ibm-mq-sre-monitor.git](https://github.com/yourusername/ibm-mq-sre-monitor.git)
+    git clone https://github.com/CharlieMT/ibm-mq-sre-monitor.git
     cd ibm-mq-sre-monitor
 
     Make the wrapper script executable:
