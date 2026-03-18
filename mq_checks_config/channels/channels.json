@@ -1,0 +1,9 @@
+{
+    "queue_manager": "QM1",
+    "object_name": "TO.QM2",
+    "check_type": "STATUS",
+    "interval": 90,
+    "max_threshold": "RUNNING",
+    "enable_alert": true,
+    "enable_check" : true
+}

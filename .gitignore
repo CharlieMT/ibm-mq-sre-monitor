@@ -1,0 +1,10 @@
+# Ignoruj wygenerowane logi
+mq_logs/
+
+# Ignoruj pliki tymczasowe Pythona
+__pycache__/
+*.pyc
+
+# Ignoruj skrypty testowe i dane mockowane
+mock_data/
+runmqsc
