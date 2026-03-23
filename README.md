@@ -28,7 +28,7 @@ mq_app_bash/
 
 📋 Prerequisites
 
-    Python 3.x installed on the host machine.
+    Python 3.8+ installed on the host machine (required for modern subprocess and logging features).
 
     IBM MQ Server or Client installed (runmqsc must be available in the system $PATH).
 

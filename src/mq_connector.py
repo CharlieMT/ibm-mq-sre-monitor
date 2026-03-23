@@ -7,7 +7,7 @@ class MQConnector:
         self.queue_manager = queue_manager
 
     def get_queue_depth(self, queue_name):
-        cmd = f'echo "DISPLAY QUEUE({queue_name})" | runmqsc {self.queue_manager}'
+        cmd = f'echo "DISPLAY QUEUE({queue_name})" | ./runmqsc {self.queue_manager}'
         try:
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
             
@@ -29,7 +29,7 @@ class MQConnector:
             return None
 
     def get_channel_status(self, channel_name):
-        cmd = f'echo "DISPLAY CHL({channel_name})" | runmqsc {self.queue_manager}'
+        cmd = f'echo "DISPLAY CHL({channel_name})" | ./runmqsc {self.queue_manager}'
         try:
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
             

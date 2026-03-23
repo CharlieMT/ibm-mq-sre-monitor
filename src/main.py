@@ -6,6 +6,7 @@ import gzip
 import shutil
 from config_parser import load_app_config, load_configurations, parse_interval
 from mq_connector import MQConnector
+from alert_manager import AlertManager
 
 def namer(name):
     """Custom namer to add .gz extension to rotated log files."""
@@ -92,6 +93,10 @@ def main():
     # Initialize next_run time for each configuration
     for config in configs:
         config['next_run'] = 0  # 0 means run immediately on first iteration
+
+    # Initialize AlertManager and sync state with Maximo API
+    logging.info("Starting Alert Manager and syncing state...")
+    alert_manager = AlertManager()
     
     try:
         while True:
@@ -121,22 +126,34 @@ def main():
                     
                     if queue_depth is None:
                         logging.error(f"[{queue_manager}] Could not retrieve depth for queue '{object_name}'. Is IBM MQ CLI available?")
+                        alert_manager.process_state(queue_manager, object_name, "CURDEPTH", True, "CLI/Connection Error - cannot read queue depth", "N/A", enable_alert)
                     else:
-                        logging.info(f"[{queue_manager}] Queue '{object_name}' depth: {queue_depth}")
-                        
-                        if enable_alert and queue_depth > max_threshold:
+                        is_failing = queue_depth > max_threshold
+                        if is_failing:
                             logging.error(f"Queue {object_name} depth is {queue_depth}! (threshold: {max_threshold})")
+                        else:
+                            logging.info(f"[{queue_manager}] Queue '{object_name}' depth: {queue_depth}")
+                
+                        # Zawsze wysyłamy aktualny stan do Alert Managera (on sam decyduje, co z tym zrobić)
+                        msg = f"Queue depth limit exceeded. Current: {queue_depth}, Threshold: {max_threshold}"
+                        alert_manager.process_state(queue_manager, object_name, "CURDEPTH", is_failing, msg, queue_depth, enable_alert)
                 
                 elif check_type == 'STATUS':
                     channel_status = mq_connector.get_channel_status(object_name)
                     
                     if channel_status is None:
                         logging.error(f"[{queue_manager}] Could not retrieve status for channel '{object_name}'. Is IBM MQ CLI available?")
+                        alert_manager.process_state(queue_manager, object_name, "STATUS", True, "CLI/Connection Error - cannot read channel status", "N/A", enable_alert)
                     else:
-                        logging.info(f"[{queue_manager}] Channel '{object_name}' status: {channel_status}")
-                        
-                        if enable_alert and channel_status != max_threshold:
+                        is_failing = channel_status != max_threshold
+                        if is_failing:
                             logging.error(f"Channel {object_name} is currently {channel_status}! (expected: {max_threshold})")
+                        else:
+                            logging.info(f"[{queue_manager}] Channel '{object_name}' status: {channel_status}")
+                
+                        # Zawsze wysyłamy aktualny stan do Alert Managera
+                        msg = f"Channel status mismatch. Current: {channel_status}, Expected: {max_threshold}"
+                        alert_manager.process_state(queue_manager, object_name, "STATUS", is_failing, msg, channel_status, enable_alert)
                 
                 # Schedule next run for this configuration
                 config['next_run'] = current_time + config.get('interval', 60)
