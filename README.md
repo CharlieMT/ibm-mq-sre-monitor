@@ -148,3 +148,35 @@ To ensure the daemon starts automatically on system boot and restarts on failure
     Bash
 
     sudo systemctl status mq-monitor.service
+
+    ## 🚨 Maximo ITSM Integration (Stateful Alerts)
+
+This SRE Daemon includes a fully integrated, stateful Alert Manager designed for IBM Maximo. It is built to prevent "alert fatigue" by tracking active incidents in memory and automatically resolving them (`status: closed`) when MQ metrics return to normal.
+
+### 🧠 Smart Features
+* **State Recovery:** On startup, the daemon queries the Maximo API for currently open alerts to reconstruct its internal state. This prevents duplicate tickets if the daemon service is restarted.
+* **Circuit Breaker (Fail-Safe):** If the Maximo API becomes unreachable (e.g., DNS failure, network outage), the daemon intelligently suspends new alert creation to prevent blind firing. It will continue to monitor MQ locally and log errors safely until the connection is restored.
+* **Auto-Incident Creation:** Major and critical MQ failures automatically include the `auto_create: True` flag, immediately escalating the issue to the 1st-line support (Operation Center) without manual intervention.
+
+### ⚙️ Configuration & Security
+
+**🛑 IMPORTANT:** Never commit your production API keys to the Git repository!
+
+The application uses a secure template system for credentials. To enable Maximo alerts:
+
+1. Copy the provided template file to create your local configuration:
+   ```bash
+   cp app_config.conf.template app_config.conf
+
+    Open app_config.conf and configure the [Alerts] section:
+    Ini, TOML
+
+    [Alerts]
+    # Master switch to enable/disable Maximo integration (boolean)
+    global_alerts_enable = true
+
+    # Maximo API Endpoint for your environment
+    api_url = [https://alerts-api.yourcompany.internal/api/v1/alerts](https://alerts-api.yourcompany.internal/api/v1/alerts)
+
+    # Your dedicated authentication key
+    api_key = YOUR_SECURE_API_KEY_HERE
