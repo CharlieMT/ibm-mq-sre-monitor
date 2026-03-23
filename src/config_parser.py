@@ -50,6 +50,8 @@ def parse_interval(interval_str):
 def load_app_config(config_file="app_config.conf"):
     """Load application configuration from config file."""
     config = {}
+    current_section = None
+    
     if not os.path.exists(config_file):
         print(f"Warning: Configuration file '{config_file}' not found. Using defaults.")
         return config
@@ -60,9 +62,22 @@ def load_app_config(config_file="app_config.conf"):
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
+                
+                # Check for section header
+                if line.startswith('[') and line.endswith(']'):
+                    current_section = line[1:-1].strip()
+                    continue
+                
                 if '=' in line:
                     key, value = line.split('=', 1)
-                    config[key.strip()] = value.strip()
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # Store with section prefix if in a section
+                    if current_section:
+                        config[f"{current_section}.{key}"] = value
+                    else:
+                        config[key] = value
     except Exception as e:
         print(f"Warning: Error reading config file: {e}")
     
@@ -73,6 +88,11 @@ def load_app_config(config_file="app_config.conf"):
     config.setdefault('log_max_size', '20MB')
     config.setdefault('log_backup_count', '5')
     config.setdefault('tick_rate', '5s')
+    
+    # Set defaults for alerts configuration
+    config.setdefault('Alerts.global_alerts_enable', 'true')
+    config.setdefault('Alerts.api_url', 'https://alerts-api.nazwaklienta.test/api/v1/alerts')
+    config.setdefault('Alerts.api_key', 'your_key_here')
     
     # Parse size string to bytes
     config['log_max_size'] = parse_size(config.get('log_max_size', '20MB'))
@@ -85,6 +105,13 @@ def load_app_config(config_file="app_config.conf"):
     
     # Parse tick rate to seconds
     config['tick_rate'] = parse_interval(config.get('tick_rate', '5s'))
+    
+    # Parse boolean for global_alerts_enable
+    try:
+        alerts_enable_str = config.get('Alerts.global_alerts_enable', 'true').lower()
+        config['Alerts.global_alerts_enable'] = alerts_enable_str in ('true', 'yes', '1', 'on')
+    except (ValueError, AttributeError):
+        config['Alerts.global_alerts_enable'] = True
     
     return config
 

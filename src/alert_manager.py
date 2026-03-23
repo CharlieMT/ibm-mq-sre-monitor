@@ -2,15 +2,16 @@ import logging
 import requests
 import urllib3
 import json
+import time
 
 # Wyłączamy ostrzeżenia o braku certyfikatu SSL (verify=False)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class AlertManager:
-    def __init__(self):
-        # Konfiguracja API
-        self.base_url = "https://alerts-api.nazwaklienta.test/api/v1/alerts"
-        self.api_key = "place for my api key"
+    def __init__(self, api_url, api_key):
+        # Konfiguracja API z parametrów
+        self.base_url = api_url
+        self.api_key = api_key
         self.headers = {
             'X-API-KEY': self.api_key,
             'Content-Type': 'application/json'
@@ -19,11 +20,17 @@ class AlertManager:
         # Pamięć RAM: mapowanie 'Zasób' -> 'ID Alertu' (np. 'QM1:LOCAL.QUEUE.TEST' -> '5hf545udf...')
         self.active_alerts = {}
         
+        # Circuit breaker / fail-safe mechanism
+        self.is_synced = False
+        self.last_sync_attempt = 0
+        self.sync_retry_interval = 300  # 5 minutes in seconds
+        
         # Przy starcie daemona, odbudowujemy stan z serwera (State Recovery)
         self._sync_state_with_api()
 
     def _sync_state_with_api(self):
         """Pobiera z serwera obecnie otwarte alerty przypisane do naszego SRE Daemona, aby uniknąć duplikatów po restarcie skryptu."""
+        self.last_sync_attempt = time.time()
         logging.info("--> [ALERT MANAGER] Syncing state with API (looking for open MQ alerts)...")
         search_url = f"{self.base_url}/_search"
         
@@ -47,13 +54,21 @@ class AlertManager:
                     if res and alert_id:
                         self.active_alerts[res] = alert_id
                 logging.info(f"--> [ALERT MANAGER] Synced successfully. Found {len(self.active_alerts)} active alerts.")
+                self.is_synced = True
             else:
                 logging.warning(f"--> [ALERT MANAGER] Failed to sync state. API returned HTTP {response.status_code}")
+                self.is_synced = False
         except Exception as e:
             logging.error(f"--> [ALERT MANAGER] Exception during state sync: {e}")
+            self.is_synced = False
 
     def _create_alert(self, severity, resource, event, value, message):
         """Wysyła POST, aby utworzyć nowy alert. Zwraca wygenerowane ID alertu lub None."""
+        # Circuit breaker: check if state is synced before creating new alerts
+        if not self.is_synced:
+            logging.warning(f"--> [ALERT MANAGER] Cannot open new alert for {resource}: State is not synced with API to prevent duplicates")
+            return None
+        
         # Jeśli to awaria, zlecamy Maximo automatyczne utworzenie incydentu na 1. linię wsparcia
         auto_create_incident = severity in ["major", "critical"]
         
@@ -108,6 +123,11 @@ class AlertManager:
         """Główna metoda wywoływana z pętli zdarzeń. Decyduje o akcji na podstawie pamięci (stanu)."""
         if not enable_alert:
             return
+
+        # Optional: Try to re-sync if not synced and enough time has passed
+        if not self.is_synced and (time.time() - self.last_sync_attempt) > self.sync_retry_interval:
+            logging.info("--> [ALERT MANAGER] Attempting to re-sync state with API...")
+            self._sync_state_with_api()
 
         resource = f"{queue_manager}:{object_name}"
         event = check_type # 'CURDEPTH' lub 'STATUS'
