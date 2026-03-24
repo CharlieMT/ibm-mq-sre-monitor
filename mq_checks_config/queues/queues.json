@@ -2,9 +2,11 @@
     "queue_manager": "QM1",
     "object_name": "LOCAL.QUEUE.TEST",
     "check_type": "CURDEPTH",
+    "operator": ">",
+    "threshold": 100,
+    "alert_severity": "major",
     "interval": 60,
-    "max_threshold": 100,
-    "max_age" : 300,
+    "max_age": 300,
     "enable_alert": true,
-    "enable_check" : true
+    "enable_check": true
 }

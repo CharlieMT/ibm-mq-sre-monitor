@@ -136,9 +136,31 @@ def load_configurations(directories):
             try:
                 with open(filepath, 'r') as f:
                     config = json.load(f)
+                    
                     # Ensure interval key exists with default of 60 seconds
                     if 'interval' not in config:
                         config['interval'] = 60
+                    
+                    # Handle backward compatibility: max_threshold -> threshold
+                    if 'max_threshold' in config and 'threshold' not in config:
+                        config['threshold'] = config['max_threshold']
+                        # Optionally remove max_threshold to avoid confusion
+                        # del config['max_threshold']
+                    
+                    # Set default operator based on check_type for backward compatibility
+                    if 'operator' not in config:
+                        check_type = config.get('check_type', '')
+                        if check_type == 'CURDEPTH':
+                            config['operator'] = '>'
+                        elif check_type == 'STATUS':
+                            config['operator'] = '!='
+                        else:
+                            config['operator'] = '=='
+                    
+                    # Set default alert_severity
+                    if 'alert_severity' not in config:
+                        config['alert_severity'] = 'major'
+                    
                     configs.append(config)
                     print(f"Loaded configuration from {os.path.basename(filepath)}")
             except json.JSONDecodeError as e:

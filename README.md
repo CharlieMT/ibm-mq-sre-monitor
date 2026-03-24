@@ -64,38 +64,69 @@ mq_app_bash/
     log_max_size = 20MB
     log_backup_count = 5
 
-⚙️ Adding Monitors
+## ⚙️ Adding Monitors (Universal Rule Engine)
 
-To add a new Queue or Channel, drop a .json file into the respective directory. Note the interval field, which dictates how often (in seconds) this specific object should be checked.
-(Note: A script restart is required to load new configurations into memory).
+This SRE Daemon features a powerful **Universal Rule Engine**. Instead of hardcoding specific checks, the daemon can dynamically query **any attribute** from IBM MQ objects and evaluate it using standard mathematical operators.
 
-Example Queue Config (mq_checks_config/queues/local_test.json):
-JSON
+To add a monitor, place a `.json` file into the `mq_checks_config/queues/` or `mq_checks_config/channels/` directory.
 
-[
-  {
+*(Note: Use the `.disable` extension, e.g., `my_queue.json.disable`, to completely exclude a file from being loaded into memory without deleting it).*
+
+### Supported Rule Parameters:
+* **`check_type`**: Any valid IBM MQ attribute returned by `runmqsc` (e.g., `CURDEPTH`, `STATUS`, `IPPROCS`, `MAXDEPTH`, `MSGDLVSQ`).
+* **`operator`**: The comparison operator. Supported values: `>`, `<`, `>=`, `<=`, `==`, `!=`.
+* **`threshold`**: The value to compare against. Can be an integer (e.g., `100`) or a string (e.g., `"RUNNING"`).
+* **`alert_severity`**: The ITSM incident level triggered upon failure. Valid options: `info`, `warning`, `minor`, `major`, `critical`.
+* **`interval`**: How often (in seconds) this specific object should be checked.
+
+### Example 1: Queue Depth Alert (Numeric Comparison)
+Triggers a 'critical' incident if the queue depth exceeds 500 messages.
+```json
+{
     "queue_manager": "QM1",
-    "object_name": "LOCAL.QUEUE.TEST",
+    "object_name": "PROD.PAYMENTS.IN",
     "check_type": "CURDEPTH",
-    "max_threshold": 100,
+    "operator": ">",
+    "threshold": 500,
+    "alert_severity": "critical",
     "enable_alert": true,
-    "interval": 15
-  }
-]
+    "enable_check": true,
+    "interval": 30
+}
 
-Example Channel Config (mq_checks_config/channels/to_qm2.json):
+Example 2: Channel Status Alert (String Comparison)
+
+Triggers a 'major' incident if the channel drops out of the RUNNING state.
 JSON
 
-[
-  {
+{
     "queue_manager": "QM1",
     "object_name": "TO.QM2",
     "check_type": "STATUS",
-    "max_threshold": "RUNNING",
+    "operator": "!=",
+    "threshold": "RUNNING",
+    "alert_severity": "major",
     "enable_alert": true,
+    "enable_check": true,
     "interval": 60
-  }
-]
+}
+
+Example 3: Application Disconnect Alert
+
+Triggers a 'minor' incident if the number of connected applications (IPPROCS) drops below 1.
+JSON
+
+{
+    "queue_manager": "QM1",
+    "object_name": "APP.LISTENER.QUEUE",
+    "check_type": "IPPROCS",
+    "operator": "<",
+    "threshold": 1,
+    "alert_severity": "minor",
+    "enable_alert": true,
+    "enable_check": true,
+    "interval": 120
+}
 
 🏃‍♂️ Usage
 

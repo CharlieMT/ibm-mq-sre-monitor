@@ -71,6 +71,67 @@ def setup_logger(app_config):
     logging.info(f"Logging initialized. Log file: {full_log_path}")
     logging.info(f"Log level: {log_level_str}, Max size: {max_bytes} bytes, Backups: {backup_count}")
 
+def evaluate_rule(value, operator, threshold):
+    """
+    Evaluate a rule dynamically with type casting.
+    
+    Args:
+        value: The value to evaluate (string from MQ)
+        operator: The operator to use (">", "<", "==", "!=", ">=", "<=")
+        threshold: The threshold value to compare against
+    
+    Returns:
+        Boolean result of the evaluation
+    """
+    try:
+        # Determine if threshold is numeric or string
+        if isinstance(threshold, (int, float)) or (isinstance(threshold, str) and threshold.replace('.', '', 1).isdigit()):
+            # Try to convert value to float for numeric comparison
+            try:
+                value_num = float(value)
+                threshold_num = float(threshold)
+                
+                # Perform numeric comparison
+                if operator == ">":
+                    return value_num > threshold_num
+                elif operator == "<":
+                    return value_num < threshold_num
+                elif operator == "==":
+                    return value_num == threshold_num
+                elif operator == "!=":
+                    return value_num != threshold_num
+                elif operator == ">=":
+                    return value_num >= threshold_num
+                elif operator == "<=":
+                    return value_num <= threshold_num
+                else:
+                    logging.error(f"Unsupported operator for numeric comparison: {operator}")
+                    return False
+            except ValueError:
+                # If conversion fails, fall back to string comparison
+                logging.warning(f"Could not convert value '{value}' or threshold '{threshold}' to numeric. Falling back to string comparison.")
+        
+        # String comparison
+        if operator == "==":
+            return str(value) == str(threshold)
+        elif operator == "!=":
+            return str(value) != str(threshold)
+        elif operator == ">":
+            return str(value) > str(threshold)
+        elif operator == "<":
+            return str(value) < str(threshold)
+        elif operator == ">=":
+            return str(value) >= str(threshold)
+        elif operator == "<=":
+            return str(value) <= str(threshold)
+        else:
+            logging.error(f"Unsupported operator: {operator}")
+            return False
+            
+    except Exception as e:
+        logging.error(f"Error evaluating rule: value={value}, operator={operator}, threshold={threshold}. Error: {e}")
+        return False
+
 def main():
     # Load application configuration
     app_config = load_app_config()
@@ -118,7 +179,9 @@ def main():
                 queue_manager = config.get('queue_manager')
                 object_name = config.get('object_name')
                 check_type = config.get('check_type')
-                max_threshold = config.get('max_threshold')
+                operator = config.get('operator', '==')
+                threshold = config.get('threshold')
+                alert_severity = config.get('alert_severity', 'major')
                 enable_check = config.get('enable_check', True)
                 enable_alert = config.get('enable_alert', True)
                 
@@ -129,43 +192,40 @@ def main():
                 
                 mq_connector = MQConnector(queue_manager)
                 
+                # Determine object type from check_type or directory (QUEUE or CHANNEL)
+                # For backward compatibility, infer from check_type
                 if check_type == 'CURDEPTH':
-                    queue_depth = mq_connector.get_queue_depth(object_name)
-                    
-                    if queue_depth is None:
-                        logging.error(f"[{queue_manager}] Could not retrieve depth for queue '{object_name}'. Is IBM MQ CLI available?")
-                        if alert_manager and enable_alert:
-                            alert_manager.process_state(queue_manager, object_name, "CURDEPTH", True, "CLI/Connection Error - cannot read queue depth", "N/A", enable_alert)
-                    else:
-                        is_failing = queue_depth > max_threshold
-                        if is_failing:
-                            logging.error(f"Queue {object_name} depth is {queue_depth}! (threshold: {max_threshold})")
-                        else:
-                            logging.info(f"[{queue_manager}] Queue '{object_name}' depth: {queue_depth}")
-                
-                        # Zawsze wysyłamy aktualny stan do Alert Managera (on sam decyduje, co z tym zrobić)
-                        if alert_manager and enable_alert:
-                            msg = f"Queue depth limit exceeded. Current: {queue_depth}, Threshold: {max_threshold}"
-                            alert_manager.process_state(queue_manager, object_name, "CURDEPTH", is_failing, msg, queue_depth, enable_alert)
-                
+                    obj_type = 'QUEUE'
                 elif check_type == 'STATUS':
-                    channel_status = mq_connector.get_channel_status(object_name)
-                    
-                    if channel_status is None:
-                        logging.error(f"[{queue_manager}] Could not retrieve status for channel '{object_name}'. Is IBM MQ CLI available?")
-                        if alert_manager and enable_alert:
-                            alert_manager.process_state(queue_manager, object_name, "STATUS", True, "CLI/Connection Error - cannot read channel status", "N/A", enable_alert)
-                    else:
-                        is_failing = channel_status != max_threshold
-                        if is_failing:
-                            logging.error(f"Channel {object_name} is currently {channel_status}! (expected: {max_threshold})")
-                        else:
-                            logging.info(f"[{queue_manager}] Channel '{object_name}' status: {channel_status}")
+                    obj_type = 'CHANNEL'
+                else:
+                    # Try to infer from configuration directory or use QUEUE as default
+                    obj_type = config.get('object_type', 'QUEUE')
                 
-                        # Zawsze wysyłamy aktualny stan do Alert Managera
-                        if alert_manager and enable_alert:
-                            msg = f"Channel status mismatch. Current: {channel_status}, Expected: {max_threshold}"
-                            alert_manager.process_state(queue_manager, object_name, "STATUS", is_failing, msg, channel_status, enable_alert)
+                # Get the attribute value using universal method
+                value = mq_connector.get_mq_attribute(obj_type, object_name, check_type)
+                
+                if value is None:
+                    logging.error(f"[{queue_manager}] Attribute '{check_type}' not found for {obj_type} '{object_name}'. Is the attribute valid or MQ CLI available?")
+                    if alert_manager and enable_alert:
+                        # Trigger a 'critical' CLI_ERROR alert as specified in requirements
+                        alert_manager.process_state(queue_manager, object_name, check_type, True, 
+                                                   f"CLI/Connection Error - cannot read {check_type} for {obj_type}", 
+                                                   "N/A", enable_alert, severity='critical')
+                else:
+                    # Evaluate the rule dynamically
+                    is_failing = evaluate_rule(value, operator, threshold)
+                    
+                    if is_failing:
+                        logging.error(f"{obj_type} {object_name} {check_type} is {value}! (rule: {check_type} {operator} {threshold})")
+                    else:
+                        logging.info(f"[{queue_manager}] {obj_type} '{object_name}' {check_type}: {value}")
+                
+                    # Always send current state to Alert Manager
+                    if alert_manager and enable_alert:
+                        msg = f"{obj_type} {check_type} rule violation. Current: {value}, Rule: {check_type} {operator} {threshold}"
+                        alert_manager.process_state(queue_manager, object_name, check_type, is_failing, 
+                                                   msg, value, enable_alert, severity=alert_severity)
                 
                 # Schedule next run for this configuration
                 config['next_run'] = current_time + config.get('interval', 60)

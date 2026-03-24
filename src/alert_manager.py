@@ -119,7 +119,7 @@ class AlertManager:
             logging.error(f"--> [MAXIMO API ERROR] Failed to close alert {alert_id}. Error: {e}")
             return False
 
-    def process_state(self, queue_manager, object_name, check_type, is_failing, message, value, enable_alert):
+    def process_state(self, queue_manager, object_name, check_type, is_failing, message, value, enable_alert, severity='major'):
         """Główna metoda wywoływana z pętli zdarzeń. Decyduje o akcji na podstawie pamięci (stanu)."""
         if not enable_alert:
             return
@@ -130,14 +130,15 @@ class AlertManager:
             self._sync_state_with_api()
 
         resource = f"{queue_manager}:{object_name}"
-        event = check_type # 'CURDEPTH' lub 'STATUS'
+        event = check_type # 'CURDEPTH' lub 'STATUS' lub any other attribute
 
         # SCENARIUSZ 1: Awaria, o której jeszcze nie wie Maximo
         if is_failing and resource not in self.active_alerts:
-            # W przypadku np. błędu CLI możemy ustawić 'critical', przy zwykłej głębokości 'major'
-            severity = "critical" if "CLI" in message else "major"
+            # For CLI connection errors, override with 'critical' as specified in requirements
+            # Otherwise use the passed severity parameter
+            final_severity = "critical" if "CLI" in message else severity
             
-            alert_id = self._create_alert(severity, resource, event, value, message)
+            alert_id = self._create_alert(final_severity, resource, event, value, message)
             if alert_id:
                 # Zapisujemy ID alertu do pamięci
                 self.active_alerts[resource] = alert_id
