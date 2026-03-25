@@ -27,7 +27,7 @@ class MQConnector:
         mq_object_type = type_map.get(object_type.upper(), object_type.upper())
         
         # Build the MQSC command
-        cmd = f'echo "DISPLAY {mq_object_type}({object_name}) {attribute}" | ./runmqsc {self.queue_manager}'
+        cmd = f'echo "DISPLAY {mq_object_type}({object_name}) {attribute}" | runmqsc {self.queue_manager}'
         
         try:
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)

@@ -168,12 +168,25 @@ class AlertManager:
         try:
             status_code, response_data = self._send_http_request('POST', search_url, payload)
             if status_code == 200:
-                alerts = response_data.get("alerts", [])
+                # --- ZABEZPIECZENIE TYPU DANYCH Z API ---
+                alerts = []
+                if isinstance(response_data, list):
+                    # Jeśli Maximo rzuca czystą listą
+                    alerts = response_data
+                elif isinstance(response_data, dict):
+                    # Jeśli Maximo rzuca słownikiem
+                    alerts = response_data.get("alerts", response_data.get("data", []))
+                else:
+                    logging.warning(f"--> [ALERT MANAGER] Otrzymano nieznany format z API: {type(response_data)}")
+                
+                # Przetwarzanie wyciągniętych alertów
                 for alert in alerts:
-                    res = alert.get("resource")
-                    alert_id = alert.get("id")
-                    if res and alert_id:
-                        self.active_alerts[res] = alert_id
+                    if isinstance(alert, dict): # Upewniamy się, że element jest poprawny
+                        res = alert.get("resource")
+                        alert_id = alert.get("id")
+                        if res and alert_id:
+                            self.active_alerts[res] = alert_id
+                            
                 logging.info(f"--> [ALERT MANAGER] Synced successfully. Found {len(self.active_alerts)} active alerts for service '{self.service_name}'.")
                 self.is_synced = True
             else:
