@@ -93,6 +93,8 @@ def load_app_config(config_file="app_config.conf"):
     config.setdefault('Alerts.global_alerts_enable', 'true')
     config.setdefault('Alerts.api_url', 'https://alerts-api.nazwaklienta.test/api/v1/alerts')
     config.setdefault('Alerts.api_key', 'your_key_here')
+    config.setdefault('Alerts.service_name', 'IBM_MQ_MONITOR')
+    config.setdefault('Alerts.http_backend', 'urllib')
     
     # Parse size string to bytes
     config['log_max_size'] = parse_size(config.get('log_max_size', '20MB'))
