@@ -1,0 +1,30 @@
+# ==============================================================================
+# Copyright (c) 2026 Kyndryl. All rights reserved.
+# PROPRIETARY AND CONFIDENTIAL
+# ==============================================================================
+
+[Unit]
+Description=Kyndryl MQ SRE Web Control Center
+# The GUI will start AFTER the network and AFTER the daemon engine
+After=network.target mq-daemon.service
+Wants=mq-daemon.service
+
+[Service]
+Type=simple
+# REPLACE <USER> with the actual Linux user
+User=<USER>
+# REPLACE <GROUP> with the actual Linux group
+Group=<GROUP>
+
+# REPLACE <APP_DIR> with the absolute path to the application directory
+WorkingDirectory=<APP_DIR>
+
+# REPLACE <PYTHON_PATH> with the absolute path to Python 3 (e.g., /usr/bin/python3)
+ExecStart=<PYTHON_PATH> <APP_DIR>/web_gui.py
+
+# Keep the GUI running at all costs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

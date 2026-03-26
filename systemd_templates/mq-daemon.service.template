@@ -1,0 +1,26 @@
+# ==============================================================================
+# Copyright (c) 2026 Kyndryl. All rights reserved.
+# PROPRIETARY AND CONFIDENTIAL
+# ==============================================================================
+
+[Unit]
+Description=Kyndryl MQ SRE Monitor Daemon
+After=network.target
+
+[Service]
+Type=simple
+# REPLACE <USER> with the actual Linux user (e.g., mqm, charlie, root)
+User=<USER>
+# REPLACE <GROUP> with the actual Linux group (e.g., mqm, users)
+Group=<GROUP>
+
+# REPLACE <APP_DIR> with the absolute path to the application directory
+WorkingDirectory=<APP_DIR>
+ExecStart=<APP_DIR>/start_monitor.sh
+
+# Restart logic for resilience
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

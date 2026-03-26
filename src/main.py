@@ -4,6 +4,7 @@ import logging.handlers
 import os
 import gzip
 import shutil
+import json
 from config_parser import load_app_config, load_configurations, parse_interval
 from mq_connector import MQConnector
 from alert_manager import AlertManager
@@ -139,22 +140,10 @@ def main():
     # Set up logging
     setup_logger(app_config)
     
-    # Load check configurations from multiple directories
+    # Get directories from config
     queues_dir = app_config.get('queues_dir', 'mq_checks_config/queues')
     channels_dir = app_config.get('channels_dir', 'mq_checks_config/channels')
     
-    configs = load_configurations([queues_dir, channels_dir])
-    
-    if not configs:
-        logging.error("No valid configurations found. Exiting.")
-        return
-    
-    logging.info(f"Loaded {len(configs)} configuration(s). Starting monitoring loop...")
-    
-    # Initialize next_run time for each configuration
-    for config in configs:
-        config['next_run'] = 0  # 0 means run immediately on first iteration
-
     # Initialize AlertManager conditionally based on configuration
     alert_manager = None
     global_alerts_enable = app_config.get('Alerts.global_alerts_enable', True)
@@ -169,8 +158,64 @@ def main():
     else:
         logging.info("Alert Manager is disabled via configuration (global_alerts_enable = false)")
     
+    # Telemetry/State-saving initialization
+    # Ensure the directory exists
+    STATE_FILE = "mq_checks_config/current_state.json"
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    
+    # Initialize global state cache
+    global_state_cache = {}
+    
     try:
         while True:
+            # Load check configurations from multiple directories at the beginning of each loop
+            # This allows dynamic reloading when Web GUI adds files
+            configs = load_configurations([queues_dir, channels_dir])
+            
+            if not configs:
+                logging.info("No configurations found. Waiting for GUI input...")
+                # Write empty state file for Web GUI
+                try:
+                    current_metrics = {
+                        "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "data": []
+                    }
+                    with open(STATE_FILE, 'w') as f:
+                        json.dump(current_metrics, f, indent=4)
+                except Exception as e:
+                    logging.error(f"Failed to write telemetry data to {STATE_FILE}: {e}")
+                
+                # Sleep for tick rate and continue to next iteration
+                tick_rate = app_config.get('tick_rate', 5)
+                time.sleep(tick_rate)
+                continue
+            
+            # Build set of currently valid cache keys to detect deleted configurations
+            valid_cache_keys = set()
+            for config in configs:
+                queue_manager = config.get('queue_manager')
+                object_name = config.get('object_name')
+                check_type = str(config.get('check_type', '')).upper()
+                
+                # Get object type from config, default to QUEUE
+                obj_type = str(config.get('object_type', 'QUEUE')).upper()
+                
+                # Create cache key using same logic as later in the loop
+                cache_key = f"{queue_manager}|{obj_type}|{object_name}|{check_type}"
+                valid_cache_keys.add(cache_key)
+            
+            # Garbage collection: remove ghost records for deleted configurations
+            # Iterate through copy of keys to avoid modification during iteration
+            for cache_key in list(global_state_cache.keys()):
+                if cache_key not in valid_cache_keys:
+                    del global_state_cache[cache_key]
+                    logging.info(f"Removed ghost record from cache: {cache_key}")
+            
+            # Initialize next_run time for each configuration if not already initialized
+            for config in configs:
+                if 'next_run' not in config:
+                    config['next_run'] = 0  # 0 means run immediately on first iteration
+            
             current_time = time.time()
             
             for config in configs:
@@ -180,35 +225,49 @@ def main():
                 
                 queue_manager = config.get('queue_manager')
                 object_name = config.get('object_name')
-                check_type = config.get('check_type')
-                operator = config.get('operator', '==')
+                check_type = str(config.get('check_type', '')).upper()
+                operator = str(config.get('operator', '==')).strip()
                 threshold = config.get('threshold')
-                alert_severity = config.get('alert_severity', 'major')
+                alert_severity = str(config.get('alert_severity', 'major')).strip().lower()
                 enable_check = config.get('enable_check', True)
                 enable_alert = config.get('enable_alert', True)
                 
+                # Determine object type from json config or infer from check_type for backward compatibility
+                obj_type = str(config.get('object_type', 'QUEUE')).upper()
+                
+                # Create unique cache key for telemetry
+                cache_key = f"{queue_manager}|{obj_type}|{object_name}|{check_type}"
+                
                 if not enable_check:
+                    # Update cache with PAUSED status
+                    global_state_cache[cache_key] = {
+                        "q_mgr": queue_manager,
+                        "obj_name": object_name,
+                        "obj_type": obj_type,
+                        "check_type": check_type,
+                        "value": "N/A",
+                        "status": "PAUSED"
+                    }
                     # Still schedule next run even if disabled
                     config['next_run'] = current_time + config.get('interval', 60)
                     continue
                 
                 mq_connector = MQConnector(queue_manager)
                 
-                # Determine object type from check_type or directory (QUEUE or CHANNEL)
-                # For backward compatibility, infer from check_type
-                if check_type == 'CURDEPTH':
-                    obj_type = 'QUEUE'
-                elif check_type == 'STATUS':
-                    obj_type = 'CHANNEL'
-                else:
-                    # Try to infer from configuration directory or use QUEUE as default
-                    obj_type = config.get('object_type', 'QUEUE')
-                
                 # Get the attribute value using universal method
                 value = mq_connector.get_mq_attribute(obj_type, object_name, check_type)
                 
                 if value is None:
                     logging.error(f"[{queue_manager}] Attribute '{check_type}' not found for {obj_type} '{object_name}'. Is the attribute valid or MQ CLI available?")
+                    # Update cache with CLI_ERROR status
+                    global_state_cache[cache_key] = {
+                        "q_mgr": queue_manager,
+                        "obj_name": object_name,
+                        "obj_type": obj_type,
+                        "check_type": check_type,
+                        "value": "ERROR",
+                        "status": "CLI_ERROR"
+                    }
                     if alert_manager and enable_alert:
                         # Trigger a 'critical' CLI_ERROR alert as specified in requirements
                         alert_manager.process_state(queue_manager, object_name, check_type, True, 
@@ -220,8 +279,26 @@ def main():
                     
                     if is_failing:
                         logging.error(f"{obj_type} {object_name} {check_type} is {value}! (rule: {check_type} {operator} {threshold})")
+                        # Update cache with ALERT status
+                        global_state_cache[cache_key] = {
+                            "q_mgr": queue_manager,
+                            "obj_name": object_name,
+                            "obj_type": obj_type,
+                            "check_type": check_type,
+                            "value": value,
+                            "status": f"ALERT ({alert_severity.upper()})"
+                        }
                     else:
                         logging.info(f"[{queue_manager}] {obj_type} '{object_name}' {check_type}: {value}")
+                        # Update cache with OK status
+                        global_state_cache[cache_key] = {
+                            "q_mgr": queue_manager,
+                            "obj_name": object_name,
+                            "obj_type": obj_type,
+                            "check_type": check_type,
+                            "value": value,
+                            "status": "OK"
+                        }
                 
                     # Always send current state to Alert Manager
                     if alert_manager and enable_alert:
@@ -231,6 +308,17 @@ def main():
                 
                 # Schedule next run for this configuration
                 config['next_run'] = current_time + config.get('interval', 60)
+            
+            # Write telemetry data to file for Web GUI
+            try:
+                current_metrics = {
+                    "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "data": list(global_state_cache.values())
+                }
+                with open(STATE_FILE, 'w') as f:
+                    json.dump(current_metrics, f, indent=4)
+            except Exception as e:
+                logging.error(f"Failed to write telemetry data to {STATE_FILE}: {e}")
             
             # Sleep for tick rate before next iteration
             tick_rate = app_config.get('tick_rate', 5)
