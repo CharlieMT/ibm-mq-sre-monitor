@@ -254,6 +254,22 @@ def main():
                 
                 mq_connector = MQConnector(queue_manager)
                 
+                # Check HA status before querying the queue manager
+                ha_status = mq_connector.get_ha_status(queue_manager)
+                if ha_status == "STANDBY":
+                    # Update cache with STANDBY status and skip the actual attribute check
+                    global_state_cache[cache_key] = {
+                        "q_mgr": queue_manager,
+                        "obj_name": object_name,
+                        "obj_type": obj_type,
+                        "check_type": check_type,
+                        "value": "N/A",
+                        "status": "STANDBY"
+                    }
+                    # Schedule next run and continue to skip the actual attribute check
+                    config['next_run'] = current_time + config.get('interval', 60)
+                    continue
+                
                 # Get the attribute value using universal method
                 value = mq_connector.get_mq_attribute(obj_type, object_name, check_type)
                 

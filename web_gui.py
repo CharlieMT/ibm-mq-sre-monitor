@@ -109,7 +109,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h1>
-            📡 Kyndryl MQ SRE Control Center
+            📡 MQ SRE Control Center
             <span class="live-indicator" id="connStatus">🟢 Connected</span>
         </h1>
         
@@ -311,7 +311,10 @@ HTML_TEMPLATE = """
                 if(data.data && data.data.length > 0) {{
                     let html = '';
                     data.data.forEach(row => {{
-                        let statusColor = row.status === 'OK' ? '#a6e3a1' : '#f38ba8';
+                        let statusColor = '#f38ba8'; // Default red (Error/Alert)
+                        if (row.status === 'OK') statusColor = '#a6e3a1'; // Green
+                        else if (row.status === 'PAUSED') statusColor = '#a6adc8'; // Gray
+                        else if (row.status === 'STANDBY') statusColor = '#f9e2af'; // Yellow
                         
                         // TUTAJ JEST POPRAWKA: Podwójne klamry dla zmiennych JS
                         let objDisplay = row.obj_type ? `[${{row.obj_type}}] ${{row.obj_name || '-'}}` : row.obj_name || '-';
