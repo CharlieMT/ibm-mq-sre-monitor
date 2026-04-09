@@ -1,0 +1,12 @@
+{
+  "Standard MQ Alert": {
+    "ehi": "KB000001",
+    "first_line": "Operation Center",
+    "second_line": "MQ Team"
+  },
+  "Payment Gateway Issue": {
+    "ehi": "KB000099",
+    "first_line": "Payments L1",
+    "second_line": "MQ SRE Team"
+  }
+}

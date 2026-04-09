@@ -7,41 +7,22 @@ class MQConnector:
         self.queue_manager = queue_manager
 
     def get_ha_status(self, qm_name):
-        """
-        Get the HA status of a Queue Manager using dspmq -m <qm_name> -x.
-        
-        Args:
-            qm_name: Name of the queue manager
-            
-        Returns:
-            "ACTIVE", "STANDBY", or "UNKNOWN"
-        """
-        cmd = f'dspmq -m {qm_name} -x'
-        
         try:
-            # Execute command with 5 second timeout
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+            cmd = ["dspmq", "-m", qm_name]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            output = result.stdout
             
-            if result.returncode != 0:
-                logging.warning(f"dspmq command failed for queue manager '{qm_name}': {result.stderr.strip()}")
-                return "UNKNOWN"
-            
-            # Parse stdout for MODE(Active) or MODE(Standby)
-            stdout = result.stdout
-            if 'MODE(Active)' in stdout:
-                return "ACTIVE"
-            elif 'MODE(Standby)' in stdout:
+            if "STATUS(Running as standby)" in output:
                 return "STANDBY"
+            elif "STATUS(Running)" in output:
+                return "ACTIVE"
             else:
-                logging.warning(f"Unexpected dspmq output for queue manager '{qm_name}': {stdout.strip()}")
+                logging.warning(f"Unexpected dspmq output for {qm_name}: {output.strip()}")
                 return "UNKNOWN"
                 
-        except subprocess.TimeoutExpired:
-            logging.error(f"dspmq command timed out for queue manager '{qm_name}' after 5 seconds")
-            return "UNKNOWN"
         except Exception as e:
-            logging.error(f"Exception while getting HA status for queue manager '{qm_name}': {e}")
-            return "UNKNOWN"
+            logging.error(f"Error checking HA status for {qm_name}: {e}")
+            return "ERROR"
 
     def get_mq_attribute(self, object_type, object_name, attribute):
         """

@@ -190,8 +190,15 @@ HTML_TEMPLATE = """
                 <div class="form-group"><label>Threshold:</label><input type="text" name="threshold" required></div>
                 <div class="form-group"><label>ITSM Severity:</label><select name="severity"><option value="info" selected>INFO</option><option value="warning">WARNING</option><option value="minor">MINOR</option><option value="major">MAJOR</option><option value="critical">CRITICAL</option></select></div>
                 <div class="form-group"><label>Check Interval (s):</label><input type="number" name="interval" value="60" min="10" required></div>
+                <div class="form-group full-width"><label>Incident Template:</label><select name="incident_template" id="add_incident_template" onchange="applyTemplate(this.value, 'add_')">{template_options}</select></div>
+                <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="add_ehi"></div>
+                <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="add_first_line"></div>
+                <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="add_second_line"></div>
                 <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" checked> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" checked> Enable ITSM Alerts</label></div>
-                <button type="submit" class="btn-submit">➕ Add New Rule</button>
+                <div style="display: flex; gap: 15px; margin-top: 10px;">
+                    <button type="submit" class="btn-submit" style="flex: 4;">➕ Add New Rule</button>
+                    <button type="reset" style="flex: 1; background-color: #45475a; color: #f38ba8; border: 1px solid #585b70; border-radius: 4px; padding: 10px; cursor: pointer; font-weight: bold; transition: 0.2s;">🗑️ Clear Form</button>
+                </div>
             </form>
         </div>
 
@@ -215,14 +222,22 @@ HTML_TEMPLATE = """
                 <div class="form-group"><label>Threshold:</label><input type="text" name="threshold" id="mod_thr" required></div>
                 <div class="form-group"><label>ITSM Severity:</label><select name="severity" id="mod_sev"><option value="info" selected>INFO</option><option value="warning">WARNING</option><option value="minor">MINOR</option><option value="major">MAJOR</option><option value="critical">CRITICAL</option></select></div>
                 <div class="form-group"><label>Check Interval (s):</label><input type="number" name="interval" id="mod_int" min="10" required></div>
+                <div class="form-group full-width"><label>Incident Template:</label><select name="incident_template" id="mod_incident_template" onchange="applyTemplate(this.value, 'mod_')">{template_options}</select></div>
+                <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="mod_ehi"></div>
+                <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="mod_first_line"></div>
+                <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="mod_second_line"></div>
                 <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" id="mod_chk"> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" id="mod_alrt"> Enable ITSM Alerts</label></div>
-                <button type="submit" class="btn-submit modify">💾 Save Modifications</button>
+                <div style="display: flex; gap: 15px; margin-top: 10px;">
+                    <button type="submit" class="btn-submit modify" style="flex: 4;">💾 Save Modifications</button>
+                    <button type="reset" onclick="document.getElementById('mod_rule_select').value='';" style="flex: 1; background-color: #45475a; color: #f38ba8; border: 1px solid #585b70; border-radius: 4px; padding: 10px; cursor: pointer; font-weight: bold; transition: 0.2s;">🗑️ Clear Form</button>
+                </div>
             </form>
         </div>
     </div>
 
     <script>
         const rulesDatabase = {rules_json_data};
+        const incidentTemplates = {templates_json};
         let activeTab = 'Dashboard';
 
         function openTab(evt, tabName) {{
@@ -275,6 +290,9 @@ HTML_TEMPLATE = """
             document.getElementById("mod_int").value = rule.interval || 60;
             document.getElementById("mod_chk").checked = rule.enable_check !== false;
             document.getElementById("mod_alrt").checked = rule.enable_alert !== false;
+            document.getElementById("mod_ehi").value = rule.ehi || "";
+            document.getElementById("mod_first_line").value = rule.first_line || "";
+            document.getElementById("mod_second_line").value = rule.second_line || "";
         }}
 
         function loadEditForm(btn) {{
@@ -283,6 +301,14 @@ HTML_TEMPLATE = """
             document.getElementById("mod_rule_select").value = filepath;
             loadRuleIntoForm(filepath);
             document.getElementById("tabModify").click();
+        }}
+
+        function applyTemplate(templateName, prefix) {{
+            if(templateName && incidentTemplates[templateName]) {{
+                document.getElementById(prefix + 'ehi').value = incidentTemplates[templateName].ehi || '';
+                document.getElementById(prefix + 'first_line').value = incidentTemplates[templateName].first_line || '';
+                document.getElementById(prefix + 'second_line').value = incidentTemplates[templateName].second_line || '';
+            }}
         }}
 
         // --- AJAX: LIVE FETCHING SYSTEM ---
@@ -379,6 +405,18 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
         system_qms = get_system_qms()
         rules_dict = {}
         
+        # Read incident templates
+        incident_templates_dict = {}
+        template_options = '<option value="">-- Select Incident Template --</option>'
+        try:
+            if os.path.exists('incident_templates.json'):
+                with open('incident_templates.json', 'r') as f:
+                    incident_templates_dict = json.load(f)
+                    for template_name in incident_templates_dict:
+                        template_options += f'<option value="{template_name}">{template_name}</option>'
+        except Exception as e:
+            logging.warning(f"Error reading incident_templates.json: {e}")
+        
         for folder in CONFIG_DIRS:
             obj_type = "QUEUE" if "queues" in folder else "CHANNEL"
             if os.path.exists(folder):
@@ -428,8 +466,9 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
         qm_filter_options = "".join([f'<option value="{qm.upper()}">{qm}</option>' for qm in sorted(list(unique_qms)) if qm != '-'])
         qm_system_options = "".join([f'<option value="{qm}">{qm}</option>' for qm in system_qms])
         rules_json_data = json.dumps(rules_dict)
+        templates_json = json.dumps(incident_templates_dict)
             
-        return rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data
+        return rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data, templates_json, template_options
 
     def do_GET(self):
         # --- NEW: API ENDPOINTS FOR LIVE METRICS & LOGS ---
@@ -480,8 +519,8 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                                 break
             except Exception as e:
                 pass  # Jeśli coś pójdzie nie tak, po prostu użyje domyślnego 5
-            table_rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data = self._read_existing_rules()
-            html = HTML_TEMPLATE.format(message="", table_rows=table_rows, qm_filter_options=qm_filter_options, qm_system_options=qm_system_options, rule_dropdown_options=rule_dropdown_options, rules_json_data=rules_json_data, tick_rate=tick_rate)
+            table_rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data, templates_json, template_options = self._read_existing_rules()
+            html = HTML_TEMPLATE.format(message="", table_rows=table_rows, qm_filter_options=qm_filter_options, qm_system_options=qm_system_options, rule_dropdown_options=rule_dropdown_options, rules_json_data=rules_json_data, templates_json=templates_json, template_options=template_options, tick_rate=tick_rate)
             self.wfile.write(html.encode("utf-8"))
         else:
             self.send_error(404, "Page not found")
@@ -506,9 +545,13 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 interval = int(data.get('interval', ['60'])[0].strip())
                 enable_check = 'enable_check' in data
                 enable_alert = 'enable_alert' in data
+                # Extract ITSM fields
+                ehi = data.get('ehi', [''])[0].strip()
+                first_line = data.get('first_line', [''])[0].strip()
+                second_line = data.get('second_line', [''])[0].strip()
                 parsed_threshold = int(threshold) if threshold.isdigit() else threshold
                 
-                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "interval": interval}
+                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line}
                 folder = "mq_checks_config/queues" if obj_type == "QUEUE" else "mq_checks_config/channels"
                 new_filepath = os.path.join(folder, f"{obj_name.replace('/', '_')}.json")
                 
@@ -535,8 +578,8 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
-        table_rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data = self._read_existing_rules()
-        html = HTML_TEMPLATE.format(message=msg, table_rows=table_rows, qm_filter_options=qm_filter_options, qm_system_options=qm_system_options, rule_dropdown_options=rule_dropdown_options, rules_json_data=rules_json_data)
+        table_rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data, templates_json, template_options = self._read_existing_rules()
+        html = HTML_TEMPLATE.format(message=msg, table_rows=table_rows, qm_filter_options=qm_filter_options, qm_system_options=qm_system_options, rule_dropdown_options=rule_dropdown_options, rules_json_data=rules_json_data, templates_json=templates_json, template_options=template_options)
         self.wfile.write(html.encode("utf-8"))
 
 if __name__ == "__main__":

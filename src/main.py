@@ -286,9 +286,14 @@ def main():
                     }
                     if alert_manager and enable_alert:
                         # Trigger a 'critical' CLI_ERROR alert as specified in requirements
+                        # Extract ITSM fields from config for CLI errors too
+                        ehi = config.get('ehi')
+                        first_line = config.get('first_line')
+                        second_line = config.get('second_line')
                         alert_manager.process_state(queue_manager, object_name, check_type, True, 
                                                    f"CLI/Connection Error - cannot read {check_type} for {obj_type}", 
-                                                   "N/A", enable_alert, severity='critical')
+                                                   "N/A", enable_alert, severity='critical',
+                                                   ehi=ehi, first_line=first_line, second_line=second_line)
                 else:
                     # Evaluate the rule dynamically
                     is_failing = evaluate_rule(value, operator, threshold)
@@ -319,8 +324,13 @@ def main():
                     # Always send current state to Alert Manager
                     if alert_manager and enable_alert:
                         msg = f"{obj_type} {check_type} rule violation. Current: {value}, Rule: {check_type} {operator} {threshold}"
+                        # Extract ITSM fields from config
+                        ehi = config.get('ehi')
+                        first_line = config.get('first_line')
+                        second_line = config.get('second_line')
                         alert_manager.process_state(queue_manager, object_name, check_type, is_failing, 
-                                                   msg, value, enable_alert, severity=alert_severity)
+                                                   msg, value, enable_alert, severity=alert_severity,
+                                                   ehi=ehi, first_line=first_line, second_line=second_line)
                 
                 # Schedule next run for this configuration
                 config['next_run'] = current_time + config.get('interval', 60)
