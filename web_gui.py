@@ -12,6 +12,35 @@ import logging
 import subprocess
 import re
 
+# Valid IBM MQ attributes for server-side validation
+VALID_QUEUE_ATTRS = {
+    "ACCTQ", "ALTDATE", "ALTTIME", "BOQNAME", "BOTHRESH", "CLCHNAME", "CLUSDATE", 
+    "CLUSNL", "CLUSQMGR", "CLUSQT", "CLUSTER", "CLUSTIME", "CLWLPRTY", "CLWLRANK", 
+    "CLWLUSEQ", "CRDATE", "CRTIME", "CURDEPTH", "CUSTOM", "DEFBIND", "DEFPRESP", 
+    "DEFPRTY", "DEFPSIST", "DEFREADA", "DEFSOPT", "DEFTYPE", "DESCR", "DISTL", 
+    "GET", "HARDENBO", "IMGRCOVQ", "INDXTYPE", "INITQ", "IPPROCS", "MAXDEPTH", 
+    "MAXFSIZE", "MAXMSGL", "MONQ", "MSGDLVSQ", "NPMCLASS", "OPPROCS", "PROCESS", 
+    "PROPCTL", "PUT", "QDEPTHHI", "QDEPTHLO", "QDPHIEV", "QDPLOEV", "QDPMAXEV", 
+    "QMID", "QSVCIEV", "QSVCINT", "QTYPE", "RETINTVL", "RNAME", "RQMNAME", "SCOPE", 
+    "SHARE", "STATQ", "STGCLASS", "STREAMQ", "STRMQOS", "TARGET", "TARGTYPE", 
+    "TPIPE", "TRIGDATA", "TRIGDPTH", "TRIGGER", "TRIGMPRI", "TRIGTYPE", "USAGE", 
+    "XMITQ"
+}
+
+VALID_CHANNEL_ATTRS = {
+    "AFFINITY", "ALTDATE", "ALTTIME", "AMQPKA", "AUTOSTART", "BATCHHB", "BATCHINT", 
+    "BATCHLIM", "BATCHSZ", "CERTLABL", "CHLTYPE", "CLNTWGHT", "CLUSTER", "CLUSNL", 
+    "CLWLPRTY", "CLWLRANK", "CLWLWGHT", "COMPHDR", "COMPMSG", "CONNAME", "CONVERT", 
+    "DEFCDISP", "DESCR", "DISCINT", "HBINT", "KAINT", "LOCLADDR", "LONGRTY", 
+    "LONGTMR", "MAXINST", "MAXINSTC", "MAXMSGL", "MCANAME", "MCATYPE", "MCAUSER", 
+    "MODENAME", "MONCHL", "MRDATA", "MREXIT", "MRRTY", "MRTMR", "MSGDATA", "MSGEXIT", 
+    "NETPRTY", "NPMSPEED", "PASSWORD", "PORT", "PROPCTL", "PUTAUT", "QMNAME", 
+    "RESETSEQ", "RCVDATA", "RCVEXIT", "SCYDATA", "SCYEXIT", "SENDDATA", "SENDEXIT", 
+    "SEQWRAP", "SHARECNV", "SHORTRTY", "SHORTTMR", "SPLPROT", "SSLCAUTH", "SSLCIPH", 
+    "SSLPEER", "STATCHL", "TPNAME", "TPROOT", "TRPTYPE", "USECLTID", "USEDLQ", 
+    "USERID", "XMITQ"
+}
+
 PORT = 8080
 CONFIG_DIRS = ["mq_checks_config/queues", "mq_checks_config/channels"]
 STATE_FILE = "mq_checks_config/current_state.json"
@@ -506,6 +535,9 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
         elif self.path == "/":
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             tick_rate = 15  # Wartość domyślna
             try:
@@ -524,6 +556,37 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(html.encode("utf-8"))
         else:
             self.send_error(404, "Page not found")
+
+    def _serve_error(self, message):
+        self.send_response(400)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.end_headers()
+        error_html = f"""
+        <html>
+            <head>
+                <title>Validation Error</title>
+                <style>
+                    body {{ background-color: #1e1e2e; color: #cdd6f4; font-family: sans-serif; text-align: center; padding-top: 50px; }}
+                    .error-box {{ background-color: #313244; padding: 20px; border-radius: 8px; display: inline-block; border: 2px solid #f38ba8; }}
+                    h1 {{ color: #f38ba8; }}
+                    a {{ color: #89b4fa; text-decoration: none; }}
+                    a:hover {{ text-decoration: underline; }}
+                </style>
+            </head>
+            <body>
+                <div class="error-box">
+                    <h1>Validation Error</h1>
+                    <p>{message}</p>
+                    <br>
+                    <a href="javascript:history.back()">⬅ Go Back and fix it</a>
+                </div>
+            </body>
+        </html>
+        """
+        self.wfile.write(error_html.encode("utf-8"))
 
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
@@ -551,7 +614,16 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 second_line = data.get('second_line', [''])[0].strip()
                 parsed_threshold = int(threshold) if threshold.isdigit() else threshold
                 
-                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line}
+                # Server-side validation for attribute check
+                check_type_upper = check_type.upper()
+                if obj_type == "QUEUE" and check_type_upper not in VALID_QUEUE_ATTRS:
+                    self._serve_error(f"Invalid attribute '{check_type}' for QUEUE. Please refer to IBM MQ documentation for valid attributes.")
+                    return
+                elif obj_type == "CHANNEL" and check_type_upper not in VALID_CHANNEL_ATTRS:
+                    self._serve_error(f"Invalid attribute '{check_type}' for CHANNEL. Please refer to IBM MQ documentation for valid attributes.")
+                    return
+                
+                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line}
                 folder = "mq_checks_config/queues" if obj_type == "QUEUE" else "mq_checks_config/channels"
                 new_filepath = os.path.join(folder, f"{obj_name.replace('/', '_')}.json")
                 
@@ -562,7 +634,11 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                         os.remove(original_filepath)
                     with open(new_filepath, 'w') as f:
                         json.dump(new_rule, f, indent=4)
-                    msg = f'<div class="message success">✅ Success! Rule {obj_name} saved.</div>'
+                    # Redirect back to the main dashboard after successful save
+                    self.send_response(303)
+                    self.send_header('Location', '/')
+                    self.end_headers()
+                    return
             except Exception as e:
                 msg = f'<div class="message error">❌ Error saving rule: {str(e)}</div>'
                 
@@ -571,12 +647,21 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 filepath = data.get('filepath', [''])[0]
                 if os.path.exists(filepath):
                     os.remove(filepath)
-                    msg = f'<div class="message success">🗑️ Success! Rule deleted.</div>'
+                    # Redirect back to the main dashboard after successful delete
+                    self.send_response(303)
+                    self.send_header('Location', '/')
+                    self.end_headers()
+                    return
             except Exception as e:
                 msg = f'<div class="message error">❌ Error deleting rule: {str(e)}</div>'
 
+        # If we get here, there was an error (or no POST path matched)
+        # Show error message on current page
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         table_rows, qm_filter_options, qm_system_options, rule_dropdown_options, rules_json_data, templates_json, template_options = self._read_existing_rules()
         html = HTML_TEMPLATE.format(message=msg, table_rows=table_rows, qm_filter_options=qm_filter_options, qm_system_options=qm_system_options, rule_dropdown_options=rule_dropdown_options, rules_json_data=rules_json_data, templates_json=templates_json, template_options=template_options)
