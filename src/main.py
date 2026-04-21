@@ -178,6 +178,7 @@ def main():
                 try:
                     current_metrics = {
                         "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "last_heartbeat": time.time(),
                         "data": []
                     }
                     with open(STATE_FILE, 'w') as f:
@@ -284,16 +285,18 @@ def main():
                         "value": "ERROR",
                         "status": "CLI_ERROR"
                     }
-                    if alert_manager and enable_alert:
+                        if alert_manager and enable_alert:
                         # Trigger a 'critical' CLI_ERROR alert as specified in requirements
                         # Extract ITSM fields from config for CLI errors too
                         ehi = config.get('ehi')
                         first_line = config.get('first_line')
                         second_line = config.get('second_line')
+                        enable_incident = config.get('enable_incident', False)
                         alert_manager.process_state(queue_manager, object_name, check_type, True, 
                                                    f"CLI/Connection Error - cannot read {check_type} for {obj_type}", 
                                                    "N/A", enable_alert, severity='critical',
-                                                   ehi=ehi, first_line=first_line, second_line=second_line)
+                                                   ehi=ehi, first_line=first_line, second_line=second_line,
+                                                   enable_incident=enable_incident)
                 else:
                     # Evaluate the rule dynamically
                     is_failing = evaluate_rule(value, operator, threshold)
@@ -328,9 +331,11 @@ def main():
                         ehi = config.get('ehi')
                         first_line = config.get('first_line')
                         second_line = config.get('second_line')
+                        enable_incident = config.get('enable_incident', False)
                         alert_manager.process_state(queue_manager, object_name, check_type, is_failing, 
                                                    msg, value, enable_alert, severity=alert_severity,
-                                                   ehi=ehi, first_line=first_line, second_line=second_line)
+                                                   ehi=ehi, first_line=first_line, second_line=second_line,
+                                                   enable_incident=enable_incident)
                 
                 # Schedule next run for this configuration
                 config['next_run'] = current_time + config.get('interval', 60)
@@ -339,6 +344,7 @@ def main():
             try:
                 current_metrics = {
                     "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "last_heartbeat": time.time(),
                     "data": list(global_state_cache.values())
                 }
                 with open(STATE_FILE, 'w') as f:

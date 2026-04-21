@@ -196,26 +196,28 @@ class AlertManager:
             logging.error(f"--> [ALERT MANAGER] Exception during state sync: {e}")
             self.is_synced = False
 
-    def _create_alert(self, severity, resource, event, value, message, ehi=None, first_line=None, second_line=None):
+    def _create_alert(self, severity, resource, event, value, message, ehi=None, first_line=None, second_line=None, enable_incident=False):
         """Wysyła POST, aby utworzyć nowy alert. Zwraca wygenerowane ID alertu lub None."""
         # Circuit breaker: check if state is synced before creating new alerts
         if not self.is_synced:
             logging.warning(f"--> [ALERT MANAGER] Cannot open new alert for {resource}: State is not synced with API to prevent duplicates")
             return None
         
-        # Jeśli to awaria, zlecamy Maximo automatyczne utworzenie incydentu na 1. linię wsparcia
-        auto_create_incident = severity in ["major", "critical"]
-        
-        incident_data = {
-            "auto_create": auto_create_incident
-        }
+        snap_data = {}
         if ehi:
-            incident_data["ehi"] = ehi
+            snap_data["ehi"] = ehi
+            
+        incident_data = {}
+        if enable_incident:
+            incident_data["auto_create"] = True
         if first_line:
             incident_data["first_line"] = first_line
         if second_line:
             incident_data["second_line"] = second_line
             
+        if incident_data:
+            snap_data["incident"] = incident_data
+
         payload = {
             "severity": severity,
             "resource": resource,
@@ -223,12 +225,11 @@ class AlertManager:
             "value": value,
             "message": message,
             "service": [self.service_name],
-            "attributes": {
-                "snap": {
-                    "incident": incident_data
-                }
-            }
+            "attributes": {}
         }
+        
+        if snap_data:
+            payload["attributes"]["snap"] = snap_data
 
         try:
             status_code, response_data = self._send_http_request('POST', self.base_url, payload)
@@ -268,7 +269,7 @@ class AlertManager:
             logging.error(f"--> [MAXIMO API ERROR] Failed to close alert {alert_id}. Error: {e}")
             return False
 
-    def process_state(self, queue_manager, object_name, check_type, is_failing, message, value, enable_alert, severity='major', ehi=None, first_line=None, second_line=None):
+    def process_state(self, queue_manager, object_name, check_type, is_failing, message, value, enable_alert, severity='major', ehi=None, first_line=None, second_line=None, enable_incident=False):
         """Główna metoda wywoływana z pętli zdarzeń. Decyduje o akcji na podstawie pamięci (stanu)."""
         if not enable_alert:
             return
@@ -287,7 +288,7 @@ class AlertManager:
             # Otherwise use the passed severity parameter
             final_severity = "critical" if "CLI" in message else severity
             
-            alert_id = self._create_alert(final_severity, resource, event, value, message, ehi, first_line, second_line)
+            alert_id = self._create_alert(final_severity, resource, event, value, message, ehi, first_line, second_line, enable_incident)
             if alert_id:
                 # Zapisujemy ID alertu do pamięci
                 self.active_alerts[resource] = alert_id

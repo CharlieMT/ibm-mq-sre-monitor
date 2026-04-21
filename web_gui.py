@@ -133,9 +133,22 @@ HTML_TEMPLATE = """
         .success {{ background-color: #a6e3a1; color: #11111b; }}
         .error {{ background-color: #f38ba8; color: #11111b; }}
         .action-form {{ margin: 0; padding: 0; display: inline; }}
+        
+        #app-status-warning {{
+            animation: pulse-bg 2s infinite;
+        }}
+        @keyframes pulse-bg {{
+            0% {{ background-color: #f38ba8; }}
+            50% {{ background-color: #fab387; }}
+            100% {{ background-color: #f38ba8; }}
+        }}
     </style>
 </head>
 <body>
+    <div id="app-status-warning" style="display: none; background-color: #f38ba8; color: #11111b; text-align: center; padding: 10px; font-weight: bold; position: sticky; top: 0; z-index: 9999;">
+        ⚠️ WARNING: Main Monitoring Daemon is NOT running! Live data is currently stale.
+    </div>
+    
     <div class="container">
         <h1>
             📡 MQ SRE Control Center
@@ -223,7 +236,7 @@ HTML_TEMPLATE = """
                 <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="add_ehi"></div>
                 <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="add_first_line"></div>
                 <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="add_second_line"></div>
-                <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" checked> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" checked> Enable ITSM Alerts</label></div>
+                <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" checked> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" checked> Enable ITSM Alerts</label><label class="checkbox-label"><input type="checkbox" name="enable_incident" id="add_enable_incident"> Enable ITSM Incident</label></div>
                 <div style="display: flex; gap: 15px; margin-top: 10px;">
                     <button type="submit" class="btn-submit" style="flex: 4;">➕ Add New Rule</button>
                     <button type="reset" style="flex: 1; background-color: #45475a; color: #f38ba8; border: 1px solid #585b70; border-radius: 4px; padding: 10px; cursor: pointer; font-weight: bold; transition: 0.2s;">🗑️ Clear Form</button>
@@ -255,7 +268,7 @@ HTML_TEMPLATE = """
                 <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="mod_ehi"></div>
                 <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="mod_first_line"></div>
                 <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="mod_second_line"></div>
-                <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" id="mod_chk"> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" id="mod_alrt"> Enable ITSM Alerts</label></div>
+                <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" id="mod_chk"> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" id="mod_alrt"> Enable ITSM Alerts</label><label class="checkbox-label"><input type="checkbox" name="enable_incident" id="mod_enable_incident"> Enable ITSM Incident</label></div>
                 <div style="display: flex; gap: 15px; margin-top: 10px;">
                     <button type="submit" class="btn-submit modify" style="flex: 4;">💾 Save Modifications</button>
                     <button type="reset" onclick="document.getElementById('mod_rule_select').value='';" style="flex: 1; background-color: #45475a; color: #f38ba8; border: 1px solid #585b70; border-radius: 4px; padding: 10px; cursor: pointer; font-weight: bold; transition: 0.2s;">🗑️ Clear Form</button>
@@ -319,6 +332,7 @@ HTML_TEMPLATE = """
             document.getElementById("mod_int").value = rule.interval || 60;
             document.getElementById("mod_chk").checked = rule.enable_check !== false;
             document.getElementById("mod_alrt").checked = rule.enable_alert !== false;
+            document.getElementById("mod_enable_incident").checked = rule.enable_incident === true;
             document.getElementById("mod_ehi").value = rule.ehi || "";
             document.getElementById("mod_first_line").value = rule.first_line || "";
             document.getElementById("mod_second_line").value = rule.second_line || "";
@@ -361,6 +375,18 @@ HTML_TEMPLATE = """
                 const data = await response.json();
                 
                 document.getElementById('lastUpdatedMetric').innerText = 'Last Daemon Update: ' + (data.last_updated || 'Unknown');
+                
+                // Check heartbeat to detect if daemon is running
+                const now = Math.floor(Date.now() / 1000);
+                const heartbeat = data.last_heartbeat || 0;
+                const diff = now - heartbeat;
+                
+                const warningBanner = document.getElementById('app-status-warning');
+                if (diff > 20) {{ // If older than 20 seconds
+                    warningBanner.style.display = 'block';
+                }} else {{
+                    warningBanner.style.display = 'none';
+                }}
                 
                 const tbody = document.getElementById('liveTableBody');
                 if(data.data && data.data.length > 0) {{
@@ -608,6 +634,7 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 interval = int(data.get('interval', ['60'])[0].strip())
                 enable_check = 'enable_check' in data
                 enable_alert = 'enable_alert' in data
+                enable_incident = 'enable_incident' in data
                 # Extract ITSM fields
                 ehi = data.get('ehi', [''])[0].strip()
                 first_line = data.get('first_line', [''])[0].strip()
@@ -623,7 +650,7 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                     self._serve_error(f"Invalid attribute '{check_type}' for CHANNEL. Please refer to IBM MQ documentation for valid attributes.")
                     return
                 
-                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line}
+                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "enable_incident": enable_incident, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line}
                 folder = "mq_checks_config/queues" if obj_type == "QUEUE" else "mq_checks_config/channels"
                 new_filepath = os.path.join(folder, f"{obj_name.replace('/', '_')}.json")
                 
