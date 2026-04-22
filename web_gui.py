@@ -226,6 +226,7 @@ HTML_TEMPLATE = """
                 <input type="hidden" name="action_type" value="ADD">
                 <div class="form-group"><label>Queue Manager:</label><select name="q_mgr" required>{qm_system_options}</select></div>
                 <div class="form-group"><label>Object Type:</label><select name="obj_type"><option value="QUEUE">QUEUE</option><option value="CHANNEL">CHANNEL</option></select></div>
+                <div class="form-group"><label>Environment:</label><select name="environment" id="add_environment" style="width: 100%; padding: 8px; border-radius: 4px; background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70;"><option value="prod">prod</option><option value="test">test</option></select></div>
                 <div class="form-group full-width"><label>Object Name:</label><input type="text" name="obj_name" required></div>
                 <div class="form-group"><label>Attribute:</label><input type="text" name="check_type" required></div>
                 <div class="form-group"><label>Operator:</label><select name="operator"><option value=">">></option><option value="<"><</option><option value=">=">>=</option><option value="<="><=</option><option value="==">==</option><option value="!=">!=</option></select></div>
@@ -238,6 +239,7 @@ HTML_TEMPLATE = """
                     <input type="text" name="custom_message" id="add_custom_message" placeholder="e.g., Please restart the channel immediately..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #585b70; background-color: #1e1e2e; color: #cdd6f4;">
                 </div>
                 <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="add_ehi"></div>
+                <div class="form-group"><label>Service Offering (ITSM):</label><input type="text" name="service_offering" id="add_service_offering" placeholder="e.g., MQ Distributed Bronze" style="width: 100%; padding: 8px; border-radius: 4px; background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70;"></div>
                 <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="add_first_line"></div>
                 <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="add_second_line"></div>
                 <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" checked> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" checked> Enable ITSM Alerts</label><label class="checkbox-label"><input type="checkbox" name="enable_incident" id="add_enable_incident"> Enable ITSM Incident</label></div>
@@ -262,6 +264,7 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="form-group"><label>Queue Manager:</label><select name="q_mgr" id="mod_qm" required>{qm_system_options}</select></div>
                 <div class="form-group"><label>Object Type:</label><select name="obj_type" id="mod_type"><option value="QUEUE">QUEUE</option><option value="CHANNEL">CHANNEL</option></select></div>
+                <div class="form-group"><label>Environment:</label><select name="environment" id="mod_environment" style="width: 100%; padding: 8px; border-radius: 4px; background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70;"><option value="prod">prod</option><option value="test">test</option></select></div>
                 <div class="form-group full-width"><label>Object Name:</label><input type="text" name="obj_name" id="mod_name" required></div>
                 <div class="form-group"><label>Attribute:</label><input type="text" name="check_type" id="mod_attr" required></div>
                 <div class="form-group"><label>Operator:</label><select name="operator" id="mod_op"><option value=">">></option><option value="<"><</option><option value=">=">>=</option><option value="<="><=</option><option value="==">==</option><option value="!=">!=</option></select></div>
@@ -274,6 +277,7 @@ HTML_TEMPLATE = """
                     <input type="text" name="custom_message" id="mod_custom_message" placeholder="e.g., Please restart the channel immediately..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #585b70; background-color: #1e1e2e; color: #cdd6f4;">
                 </div>
                 <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="mod_ehi"></div>
+                <div class="form-group"><label>Service Offering (ITSM):</label><input type="text" name="service_offering" id="mod_service_offering" placeholder="e.g., MQ Distributed Bronze" style="width: 100%; padding: 8px; border-radius: 4px; background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70;"></div>
                 <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="mod_first_line"></div>
                 <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="mod_second_line"></div>
                 <div class="form-group full-width checkbox-group"><label class="checkbox-label"><input type="checkbox" name="enable_check" id="mod_chk"> Enable Monitoring</label><label class="checkbox-label"><input type="checkbox" name="enable_alert" id="mod_alrt"> Enable ITSM Alerts</label><label class="checkbox-label"><input type="checkbox" name="enable_incident" id="mod_enable_incident"> Enable ITSM Incident</label></div>
@@ -342,6 +346,8 @@ HTML_TEMPLATE = """
             document.getElementById("mod_alrt").checked = rule.enable_alert !== false;
             document.getElementById("mod_enable_incident").checked = rule.enable_incident === true;
             document.getElementById("mod_custom_message").value = rule.custom_message || "";
+            document.getElementById("mod_environment").value = rule.environment || "prod";
+            document.getElementById("mod_service_offering").value = rule.service_offering || "";
             document.getElementById("mod_ehi").value = rule.ehi || "";
             document.getElementById("mod_first_line").value = rule.first_line || "";
             document.getElementById("mod_second_line").value = rule.second_line || "";
@@ -362,6 +368,8 @@ HTML_TEMPLATE = """
                 document.getElementById(prefix + 'second_line').value = incidentTemplates[templateName].second_line || '';
             }}
             document.getElementById(prefix + 'custom_message').value = '';
+            document.getElementById(prefix + 'environment').value = 'prod';
+            document.getElementById(prefix + 'service_offering').value = '';
         }}
 
         // --- AJAX: LIVE FETCHING SYSTEM ---
@@ -650,6 +658,8 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 first_line = data.get('first_line', [''])[0].strip()
                 second_line = data.get('second_line', [''])[0].strip()
                 custom_message = data.get('custom_message', [''])[0].strip()
+                env_val = data.get('environment', ['prod'])[0].strip().lower()
+                service_offering = data.get('service_offering', [''])[0].strip()
                 parsed_threshold = int(threshold) if threshold.isdigit() else threshold
                 
                 # Server-side validation for attribute check
@@ -661,7 +671,7 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                     self._serve_error(f"Invalid attribute '{check_type}' for CHANNEL. Please refer to IBM MQ documentation for valid attributes.")
                     return
                 
-                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "enable_incident": enable_incident, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line, "custom_message": custom_message}
+                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "enable_incident": enable_incident, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line, "custom_message": custom_message, "environment": env_val if env_val in ['prod', 'test'] else 'prod', "service_offering": service_offering}
                 folder = "mq_checks_config/queues" if obj_type == "QUEUE" else "mq_checks_config/channels"
                 new_filepath = os.path.join(folder, f"{obj_name.replace('/', '_')}.json")
                 

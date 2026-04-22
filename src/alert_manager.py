@@ -196,7 +196,7 @@ class AlertManager:
             logging.error(f"--> [ALERT MANAGER] Exception during state sync: {e}")
             self.is_synced = False
 
-    def _create_alert(self, severity, resource, event, value, message, ehi=None, first_line=None, second_line=None, enable_incident=False):
+    def _create_alert(self, severity, resource, event, value, message, ehi=None, first_line=None, second_line=None, enable_incident=False, environment="prod", service_offering=None):
         """Wysyła POST, aby utworzyć nowy alert. Zwraca wygenerowane ID alertu lub None."""
         # Circuit breaker: check if state is synced before creating new alerts
         if not self.is_synced:
@@ -222,6 +222,9 @@ class AlertManager:
         if second_line:
             incident_data["second_line"] = second_line
             
+        if service_offering:
+            incident_data["service_offering"] = service_offering
+            
         snap_data["incident"] = incident_data
 
         payload = {
@@ -231,6 +234,7 @@ class AlertManager:
             "value": value,
             "message": message,
             "service": [self.service_name],
+            "environment": environment,
             "attributes": {
                 "snap": snap_data
             }
@@ -274,7 +278,7 @@ class AlertManager:
             logging.error(f"--> [MAXIMO API ERROR] Failed to close alert {alert_id}. Error: {e}")
             return False
 
-    def process_state(self, queue_manager, object_name, check_type, is_failing, message, value, enable_alert, severity='major', ehi=None, first_line=None, second_line=None, enable_incident=False):
+    def process_state(self, queue_manager, object_name, check_type, is_failing, message, value, enable_alert, severity='major', ehi=None, first_line=None, second_line=None, enable_incident=False, environment="prod", service_offering=None):
         """Główna metoda wywoływana z pętli zdarzeń. Decyduje o akcji na podstawie pamięci (stanu)."""
         if not enable_alert:
             return
@@ -293,7 +297,7 @@ class AlertManager:
             # Otherwise use the passed severity parameter
             final_severity = "critical" if "CLI" in message else severity
             
-            alert_id = self._create_alert(final_severity, resource, event, value, message, ehi, first_line, second_line, enable_incident)
+            alert_id = self._create_alert(final_severity, resource, event, value, message, ehi, first_line, second_line, enable_incident, environment, service_offering)
             if alert_id:
                 # Zapisujemy ID alertu do pamięci
                 self.active_alerts[resource] = alert_id
