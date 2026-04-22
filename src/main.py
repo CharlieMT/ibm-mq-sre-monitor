@@ -285,7 +285,7 @@ def main():
                         "value": "ERROR",
                         "status": "CLI_ERROR"
                     }
-                        if alert_manager and enable_alert:
+                    if alert_manager and enable_alert:
                         # Trigger a 'critical' CLI_ERROR alert as specified in requirements
                         # Extract ITSM fields from config for CLI errors too
                         ehi = config.get('ehi')
