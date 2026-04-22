@@ -203,20 +203,26 @@ class AlertManager:
             logging.warning(f"--> [ALERT MANAGER] Cannot open new alert for {resource}: State is not synced with API to prevent duplicates")
             return None
         
+        # Fallback mechanism: Use provided first_line, otherwise default to "Operation Center"
+        resolved_first_line = first_line.strip() if first_line and first_line.strip() else "Operation Center"
+        
         snap_data = {}
         if ehi:
             snap_data["ehi"] = ehi
             
-        incident_data = {}
+        incident_data = {
+            "first_line": resolved_first_line,
+            "assignee_group": resolved_first_line,
+            "ownergroup": resolved_first_line
+        }
+        
         if enable_incident:
             incident_data["auto_create"] = True
-        if first_line:
-            incident_data["first_line"] = first_line
+            
         if second_line:
             incident_data["second_line"] = second_line
             
-        if incident_data:
-            snap_data["incident"] = incident_data
+        snap_data["incident"] = incident_data
 
         payload = {
             "severity": severity,
@@ -225,11 +231,10 @@ class AlertManager:
             "value": value,
             "message": message,
             "service": [self.service_name],
-            "attributes": {}
+            "attributes": {
+                "snap": snap_data
+            }
         }
-        
-        if snap_data:
-            payload["attributes"]["snap"] = snap_data
 
         try:
             status_code, response_data = self._send_http_request('POST', self.base_url, payload)

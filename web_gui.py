@@ -233,6 +233,10 @@ HTML_TEMPLATE = """
                 <div class="form-group"><label>ITSM Severity:</label><select name="severity"><option value="info" selected>INFO</option><option value="warning">WARNING</option><option value="minor">MINOR</option><option value="major">MAJOR</option><option value="critical">CRITICAL</option></select></div>
                 <div class="form-group"><label>Check Interval (s):</label><input type="number" name="interval" value="60" min="10" required></div>
                 <div class="form-group full-width"><label>Incident Template:</label><select name="incident_template" id="add_incident_template" onchange="applyTemplate(this.value, 'add_')">{template_options}</select></div>
+                <div class="form-group full-width">
+                    <label>Custom Alert Message (Optional):</label>
+                    <input type="text" name="custom_message" id="add_custom_message" placeholder="e.g., Please restart the channel immediately..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #585b70; background-color: #1e1e2e; color: #cdd6f4;">
+                </div>
                 <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="add_ehi"></div>
                 <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="add_first_line"></div>
                 <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="add_second_line"></div>
@@ -265,6 +269,10 @@ HTML_TEMPLATE = """
                 <div class="form-group"><label>ITSM Severity:</label><select name="severity" id="mod_sev"><option value="info" selected>INFO</option><option value="warning">WARNING</option><option value="minor">MINOR</option><option value="major">MAJOR</option><option value="critical">CRITICAL</option></select></div>
                 <div class="form-group"><label>Check Interval (s):</label><input type="number" name="interval" id="mod_int" min="10" required></div>
                 <div class="form-group full-width"><label>Incident Template:</label><select name="incident_template" id="mod_incident_template" onchange="applyTemplate(this.value, 'mod_')">{template_options}</select></div>
+                <div class="form-group full-width">
+                    <label>Custom Alert Message (Optional):</label>
+                    <input type="text" name="custom_message" id="mod_custom_message" placeholder="e.g., Please restart the channel immediately..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #585b70; background-color: #1e1e2e; color: #cdd6f4;">
+                </div>
                 <div class="form-group"><label>Knowledge Base (EHI):</label><input type="text" name="ehi" id="mod_ehi"></div>
                 <div class="form-group"><label>Level 1 Support:</label><input type="text" name="first_line" id="mod_first_line"></div>
                 <div class="form-group"><label>Level 2 Support:</label><input type="text" name="second_line" id="mod_second_line"></div>
@@ -333,6 +341,7 @@ HTML_TEMPLATE = """
             document.getElementById("mod_chk").checked = rule.enable_check !== false;
             document.getElementById("mod_alrt").checked = rule.enable_alert !== false;
             document.getElementById("mod_enable_incident").checked = rule.enable_incident === true;
+            document.getElementById("mod_custom_message").value = rule.custom_message || "";
             document.getElementById("mod_ehi").value = rule.ehi || "";
             document.getElementById("mod_first_line").value = rule.first_line || "";
             document.getElementById("mod_second_line").value = rule.second_line || "";
@@ -352,6 +361,7 @@ HTML_TEMPLATE = """
                 document.getElementById(prefix + 'first_line').value = incidentTemplates[templateName].first_line || '';
                 document.getElementById(prefix + 'second_line').value = incidentTemplates[templateName].second_line || '';
             }}
+            document.getElementById(prefix + 'custom_message').value = '';
         }}
 
         // --- AJAX: LIVE FETCHING SYSTEM ---
@@ -639,6 +649,7 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 ehi = data.get('ehi', [''])[0].strip()
                 first_line = data.get('first_line', [''])[0].strip()
                 second_line = data.get('second_line', [''])[0].strip()
+                custom_message = data.get('custom_message', [''])[0].strip()
                 parsed_threshold = int(threshold) if threshold.isdigit() else threshold
                 
                 # Server-side validation for attribute check
@@ -650,7 +661,7 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                     self._serve_error(f"Invalid attribute '{check_type}' for CHANNEL. Please refer to IBM MQ documentation for valid attributes.")
                     return
                 
-                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "enable_incident": enable_incident, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line}
+                new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "enable_incident": enable_incident, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line, "custom_message": custom_message}
                 folder = "mq_checks_config/queues" if obj_type == "QUEUE" else "mq_checks_config/channels"
                 new_filepath = os.path.join(folder, f"{obj_name.replace('/', '_')}.json")
                 

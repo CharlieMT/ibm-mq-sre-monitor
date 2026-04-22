@@ -326,14 +326,18 @@ def main():
                 
                     # Always send current state to Alert Manager
                     if alert_manager and enable_alert:
-                        msg = f"{obj_type} {check_type} rule violation. Current: {value}, Rule: {check_type} {operator} {threshold}"
+                        custom_message = config.get("custom_message", "")
+                        if custom_message:
+                            final_message = f"{custom_message} (Actual value: {value})"
+                        else:
+                            final_message = f"Threshold breached for {object_name}: {check_type} is {value} (Rule: {operator} {threshold})"
                         # Extract ITSM fields from config
                         ehi = config.get('ehi')
                         first_line = config.get('first_line')
                         second_line = config.get('second_line')
                         enable_incident = config.get('enable_incident', False)
                         alert_manager.process_state(queue_manager, object_name, check_type, is_failing, 
-                                                   msg, value, enable_alert, severity=alert_severity,
+                                                   final_message, value, enable_alert, severity=alert_severity,
                                                    ehi=ehi, first_line=first_line, second_line=second_line,
                                                    enable_incident=enable_incident)
                 
