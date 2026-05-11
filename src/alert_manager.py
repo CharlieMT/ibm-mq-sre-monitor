@@ -7,16 +7,18 @@ import urllib.request
 import urllib.error
 
 class AlertManager:
-    def __init__(self, api_url, api_key, service_name='IBM_MQ_MONITOR', http_backend='urllib'):
+    def __init__(self, api_url, api_key=None, service_name='IBM_MQ_MONITOR', http_backend='urllib', access_token=None):
         # Konfiguracja API z parametrów
         self.base_url = api_url
         self.api_key = api_key
         self.service_name = service_name
         self.http_backend = http_backend.lower()
-        self.headers = {
-            'X-API-KEY': self.api_key,
-            'Content-Type': 'application/json'
-        }
+        self.access_token = access_token
+        self.headers = {"Content-Type": "application/json"}
+        if self.access_token:
+            self.headers["X-ACCESS-TOKEN"] = self.access_token
+        elif self.api_key:
+            self.headers["X-API-KEY"] = self.api_key
         
         # Pamięć RAM: mapowanie 'Zasób' -> 'ID Alertu' (np. 'QM1:LOCAL.QUEUE.TEST' -> '5hf545udf...')
         self.active_alerts = {}

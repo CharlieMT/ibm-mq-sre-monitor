@@ -149,12 +149,13 @@ def main():
     global_alerts_enable = app_config.get('Alerts.global_alerts_enable', True)
     api_url = app_config.get('Alerts.api_url', 'https://alerts-api.nazwaklienta.test/api/v1/alerts')
     api_key = app_config.get('Alerts.api_key', 'your_key_here')
+    access_token = app_config.get('Alerts.access_token')
     service_name = app_config.get('Alerts.service_name', 'IBM_MQ_MONITOR')
     http_backend = app_config.get('Alerts.http_backend', 'urllib')
     
     if global_alerts_enable:
         logging.info(f"Starting Alert Manager with service name '{service_name}' and HTTP backend '{http_backend}'...")
-        alert_manager = AlertManager(api_url, api_key, service_name, http_backend)
+        alert_manager = AlertManager(api_url, api_key=api_key, service_name=service_name, http_backend=http_backend, access_token=access_token)
     else:
         logging.info("Alert Manager is disabled via configuration (global_alerts_enable = false)")
     
