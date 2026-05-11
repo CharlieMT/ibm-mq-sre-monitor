@@ -1,40 +1,46 @@
-# 📡 Kyndryl MQ SRE Control Center & Monitor Daemon
+📡 Kyndryl MQ SRE Control Center & Monitor Daemon
 
-*Instrukcja dla dokumentacji (Jak tego użyć)*
+Instrukcja dla dokumentacji (Jak tego użyć)
 
-A highly robust, production-grade Python daemon and Native Web GUI for monitoring IBM MQ infrastructure (Queues and Channels). Built strictly with Site Reliability Engineering (SRE) principles in mind, it utilizes the native `runmqsc` and `dspmq` CLIs to fetch real-time metrics. 
+A highly robust, production-grade Python daemon and Native Web GUI for monitoring IBM MQ infrastructure (Queues and Channels). Built strictly with Site Reliability Engineering (SRE) principles in mind, it utilizes the native runmqsc and dspmq CLIs to fetch real-time metrics.
 
-It features a Single Page Application (SPA) dashboard for live telemetry and fully integrates with Maximo ITSM for stateful alerting, dynamic routing, and High Availability (HA) cluster awareness.
+It features a Single Page Application (SPA) dashboard for live telemetry and fully integrates with Maximo ITSM for stateful alerting, dynamic routing, CMDB awareness, and High Availability (HA) cluster awareness.
+✨ Key Features
 
----
+    High Availability (HA) Awareness: Automatically runs dspmq to determine if the local instance is Active or in Standby. Pauses runmqsc queries on Standby nodes to prevent false CLI errors and alert storms.
 
-## ✨ Key Features
+    Dynamic ITSM & CMDB Routing: Generates Maximo incident payloads enriched with specific Knowledge Base articles (EHI), Level 1, and Level 2 support groups based on pre-defined templates. Supports Service Offering parameters to align with Maximo's internal CMDB routing rules.
 
-* **High Availability (HA) Awareness:** Automatically runs `dspmq` to determine if the local instance is Active or in Standby. Pauses `runmqsc` queries on Standby nodes to prevent false CLI errors and alert storms.
-* **Dynamic ITSM Routing:** Generates Maximo incident payloads enriched with specific Knowledge Base articles (EHI), Level 1, and Level 2 support groups based on pre-defined templates.
-* **Universal Rule Engine:** Monitors are defined in modular JSON files. Instead of hardcoding checks, the daemon dynamically evaluates any IBM MQ attribute against a defined threshold using mathematical operators.
-* **Native Web GUI & Telemetry:** A zero-dependency HTTP server (`web_gui.py`) providing a dark-mode dashboard. It features CRUD operations for JSON configurations, PRG (Post/Redirect/Get) patterns, strict cache-control, and fetches live metrics via asynchronous JavaScript (AJAX).
-* **Strict Server-Side Validation:** The Web GUI enforces strict validation against official IBM MQ parameters for QUEUE and CHANNEL objects (e.g., preventing typos like `CURDPTH`).
-* **Stateful Alerting & Circuit Breaker:** Connects to Maximo API. Remembers open alerts to prevent duplicate tickets and intelligently suspends new alert creation if the Maximo API becomes unreachable.
-* **Production-Grade Logging:** Built-in RotatingFileHandler prevents log exhaustion by capping active log size and automatically compressing (`.gz`) older archives.
+    Dual API Authentication: Seamlessly supports both legacy api_key (Authorization headers) and modern access_token (X-ACCESS-TOKEN headers) for secure ITSM communication.
 
----
+    Custom Alert Messages: Allows SREs to define custom, actionable alert descriptions (e.g., "Please restart channel X") per rule, overriding generic threshold warnings.
 
-## 📋 Prerequisites & System Requirements
+    Universal Rule Engine: Monitors are defined in modular JSON files. Instead of hardcoding checks, the daemon dynamically evaluates any IBM MQ attribute against a defined threshold using mathematical operators.
 
-* **Python Version:** Python 3.11 or 3.12 is highly recommended for optimal asynchronous performance and native `subprocess` features (`text=True`, `capture_output=True`). Backward compatible down to Python 3.8 (`universal_newlines=True`).
-* **IBM MQ:** IBM MQ Server or Client installed. The commands `runmqsc` and `dspmq` MUST be available in the system `$PATH`.
-* **Permissions:** The Linux user executing this script MUST be a member of the `mqm` group (or have equivalent MQ administrative rights).
-* **Network:** TCP port `8080` open for Web GUI access. Outbound access to the Maximo API endpoint.
+    Native Web GUI & Telemetry: A zero-dependency HTTP server (web_gui.py) providing a dark-mode dashboard. It features CRUD operations for JSON configurations, PRG (Post/Redirect/Get) patterns, strict cache-control, and fetches live metrics via asynchronous JavaScript (AJAX). Includes a live Heartbeat monitor.
 
----
+    Strict Server-Side Validation: The Web GUI enforces strict validation against official IBM MQ parameters for QUEUE and CHANNEL objects (e.g., preventing typos like CURDPTH).
 
-## 📂 Directory Structure & Core Files
+    Stateful Alerting & Circuit Breaker: Connects to Maximo API. Remembers open alerts to prevent duplicate tickets and intelligently suspends new alert creation if the Maximo API becomes unreachable.
 
-```text
+    Production-Grade Logging: Built-in RotatingFileHandler prevents log exhaustion by capping active log size and automatically compressing (.gz) older archives.
+
+📋 Prerequisites & System Requirements
+
+    Python Version: Python 3.11 or 3.12 is highly recommended for optimal asynchronous performance and native subprocess features (text=True, capture_output=True). Backward compatible down to Python 3.8 (universal_newlines=True).
+
+    IBM MQ: IBM MQ Server or Client installed. The commands runmqsc and dspmq MUST be available in the system $PATH.
+
+    Permissions: The Linux user executing this script MUST be a member of the mqm group (or have equivalent MQ administrative rights).
+
+    Network: TCP port 8080 open for Web GUI access. Outbound access to the Maximo API endpoint.
+
+📂 Directory Structure & Core Files
+Plaintext
+
 mq_sre_monitor/
 ├── start_monitor.sh           # Main entry point (Bash wrapper)
-├── app_config.conf            # Global application settings (Tick rate, Paths, API keys)
+├── app_config.conf            # Global application settings (Tick rate, Paths, API keys, Tokens)
 ├── incident_templates.json    # ITSM routing templates (EHI, L1, L2 mapping)
 ├── web_gui.py                 # Native Web GUI server & API endpoints
 ├── src/                       # Core Python logic
@@ -52,8 +58,8 @@ mq_sre_monitor/
 └── mq_logs/                   # Automatically generated rotating logs (.log & .gz)
 
 ⚙️ Configuration Files Detailed
-1. app_config.conf
 
+1. app_config.conf
 The master configuration file for the daemon and GUI.
 
     tick_rate: Base resolution of the event loop in seconds (e.g., 5).
@@ -62,10 +68,9 @@ The master configuration file for the daemon and GUI.
 
     global_alerts_enable: Master boolean switch to turn Maximo alerts on/off.
 
-    api_url / api_key: Maximo ITSM API endpoint and authentication token.
+    api_url / api_key / access_token: Maximo ITSM API endpoint and authentication credentials.
 
 2. incident_templates.json
-
 Stores the mapping for ITSM routing used in the Web GUI dropdowns. Allows rapid assignment of incidents to correct teams without manual typing.
 JSON
 
@@ -84,30 +89,37 @@ JSON
 
 🚀 Installation & Systemd Deployment
 
-    Clone the repository:
-    Bash
+Clone the repository:
+Bash
 
-    git clone [https://github.com/Kyndryl/mq-sre-monitor.git](https://github.com/Kyndryl/mq-sre-monitor.git)
-    cd mq-sre-monitor
-    chmod +x start_monitor.sh src/main.py web_gui.py
+git clone https://github.com/Kyndryl/mq-sre-monitor.git
+cd mq-sre-monitor
+chmod +x start_monitor.sh src/main.py web_gui.py
 
-    Adjust global behavior:
-    Edit app_config.conf to match your environment paths and Maximo API keys.
+Adjust global behavior by editing app_config.conf to match your environment paths and Maximo API credentials.
+⚠️ CRITICAL: Deployment Instructions (Systemd)
 
-    Deployment Instructions (Systemd):
-    Copy the templates to the system directory:
-    Bash
+When deploying as a system service, systemd strips standard environment variables. If the daemon cannot find dspmq or runmqsc, it will fail to start or execute checks. You MUST define the MQ paths in your systemd service files.
 
-    sudo cp systemd_templates/mq-daemon.service.template /etc/systemd/system/mq-sre-daemon.service
-    sudo cp systemd_templates/mq-gui.service.template /etc/systemd/system/mq-sre-gui.service
+Copy the templates to the system directory:
+Bash
 
-    Edit both files and replace the <USER>, <GROUP>, <APP_DIR>, and <PYTHON_PATH> tags with your environment-specific values.
+sudo cp systemd_templates/mq-daemon.service.template /etc/systemd/system/mq-sre-daemon.service
+sudo cp systemd_templates/mq-gui.service.template /etc/systemd/system/mq-sre-gui.service
 
-    Reload daemon and enable services:
-    Bash
+Edit both files and replace the <USER>, <GROUP>, <APP_DIR>, and <PYTHON_PATH> tags with your environment-specific values. Ensure the Environment paths are explicitly set inside the [Service] block:
+Ini, TOML
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now mq-sre-daemon.service mq-sre-gui.service
+[Service]
+# CRITICAL: Path to MQ binaries and libraries
+Environment="PATH=/opt/mqm/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="LD_LIBRARY_PATH=/opt/mqm/lib64"
+
+Reload daemon and enable services:
+Bash
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now mq-sre-daemon.service mq-sre-gui.service
 
 💻 Usage (Web GUI)
 
@@ -115,7 +127,7 @@ Once the services are running, access the Control Center via your browser at htt
 
     📊 Rules Config: View all active monitoring rules, their current ITSM mappings, and quick actions.
 
-    ⚡ Live Values: Displays real-time telemetry data fetched from the daemon. Shows HA STANDBY status gracefully.
+    ⚡ Live Values & Heartbeat: Displays real-time telemetry data fetched from the daemon. Shows HA STANDBY status gracefully. Features a visual Heartbeat indicator verifying the daemon's uptime.
 
     📜 System Logs: Tails the mq_monitor.log file in real-time.
 
@@ -124,7 +136,10 @@ Once the services are running, access the Control Center via your browser at htt
 🧠 Adding Monitors (Universal Rule Engine)
 
 This SRE Daemon features a powerful Universal Rule Engine. Rules can be added via the Web GUI or manually as .json files.
+
 Supported Rule Parameters:
+
+    environment: Strict choice between prod or test.
 
     check_type: Any valid IBM MQ attribute (e.g., CURDEPTH, STATUS, IPPROCS). Validated server-side.
 
@@ -136,44 +151,63 @@ Supported Rule Parameters:
 
     interval: How often (in seconds) this specific object should be checked.
 
-    ehi, first_line, second_line: Optional ITSM routing fields.
+    enable_alert / enable_incident: Boolean flags to decouple simple alerts from formal ITSM ticket creation.
 
-Example: Queue Depth Alert with ITSM Routing
+    custom_message: An optional, human-readable instruction sent to Maximo instead of the generic alert text.
 
-Triggers a 'critical' incident routed to the MQ Team if the depth exceeds 500.
+    ehi, first_line, second_line, service_offering: ITSM routing fields.
+
+Example: Queue Depth Alert with full ITSM Routing
+
+Triggers a 'critical' incident routed to the MQ Team if the depth exceeds 500, including a custom instruction.
 JSON
 
 {
     "queue_manager": "QM1",
     "object_type": "QUEUE",
     "object_name": "PROD.PAYMENTS.IN",
+    "environment": "prod",
     "check_type": "CURDEPTH",
     "operator": ">",
     "threshold": 500,
     "alert_severity": "critical",
     "enable_alert": true,
-    "enable_check": true,
+    "enable_incident": true,
     "interval": 30,
+    "custom_message": "Payment queue is flooded. Please alert the Payments L1 team and check channel status.",
     "ehi": "KB000001",
-    "first_line": "Operation Center",
-    "second_line": "MQ Team"
+    "first_line": "MQ SRE Team",
+    "second_line": "App Support",
+    "service_offering": "MQ Distributed Gold"
 }
 
 🚨 Maximo ITSM Integration & Smart Features
 
     State Recovery: On startup, the daemon queries the Maximo API for currently open alerts to reconstruct its internal state. This prevents duplicate tickets if the daemon service is restarted.
 
-    Auto-Incident Creation: Major and critical MQ failures automatically include the auto_create: True flag, immediately escalating the issue.
+    Auto-Incident Creation: Major and critical MQ failures automatically include the auto_create: True flag, immediately escalating the issue (if enabled in the rule).
 
     Circuit Breaker (Fail-Safe): If the Maximo API becomes unreachable, the daemon intelligently suspends new alert creation to prevent blind firing, while continuing local MQ monitoring.
 
     HA Awareness (Standby Muting): Multi-instance nodes in STATUS(Running as standby) are detected. The daemon skips runmqsc queries for these nodes, preventing log pollution and false alerts.
 
+🔀 ITSM Incident Routing Hierarchy
+
+The payload sent to Maximo follows strict SRE routing rules evaluated in this order:
+
+    First Line Fallback: If the first_line group is left blank, the system safely defaults to "Operation Center".
+
+    Second Line: Maps to the second-line support group if provided.
+
+    Service Offering (CMDB Override): If a service_offering is provided, Maximo will link the incident to that CMDB asset. Warning: Maximo's internal CMDB logic often overrides the first_line parameter. If a Service Offering is attached, Maximo may automatically route the ticket to the owner of that service, ignoring the First Line specified in the Web GUI.
+
 ⚙️ Configuration & Security
 
-🛑 IMPORTANT: Never commit your production API keys to the Git repository!
+🛑 IMPORTANT: Never commit your production API keys or Tokens to the Git repository!
 
-The application uses a secure template system for credentials. To enable Maximo alerts, configure the [Alerts] section in app_config.conf:
+The application uses a secure template system for credentials and supports Dual Authentication for smooth migrations. To enable Maximo alerts, configure the [Alerts] section in app_config.conf.
+
+Note on Precedence: If both an API Key and an Access Token are provided, the system will prioritize the access_token (X-ACCESS-TOKEN header) and ignore the legacy api_key.
 Ini, TOML
 
 [Alerts]
@@ -181,7 +215,10 @@ Ini, TOML
 global_alerts_enable = true
 
 # Maximo API Endpoint for your environment
-api_url = [https://alerts-api.yourcompany.internal/api/v1/alerts](https://alerts-api.yourcompany.internal/api/v1/alerts)
+api_url = https://alerts-api.yourcompany.internal/api/v1/alerts
 
-# Your dedicated authentication key
+# Legacy Authentication Method:
 api_key = YOUR_SECURE_API_KEY_HERE
+
+# Modern Authentication Method (Takes Precedence):
+access_token = YOUR_SECURE_ACCESS_TOKEN_HERE
