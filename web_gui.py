@@ -27,6 +27,15 @@ VALID_QUEUE_ATTRS = {
     "XMITQ"
 }
 
+VALID_LISTENER_ATTRS = {
+    "ADAPTER", "ALTDATE", "ALTTIME", "BACKLOG", "CONTROL", "DESCR", "HOSTNAME",
+    "IPADDR", "LISTENER", "LISTENERDM", "LOCLADDR", "LUNAME", "MCAUSER",
+    "MODENAME", "MRDATA", "MREXIT", "MRRTY", "MRTMR", "MSGDATA", "MSGEXIT",
+    "PORT", "RCVDATA", "RCVEXIT", "SCYDATA", "SCYEXIT", "SENDDATA", "SENDEXIT",
+    "SEQWRAP", "SESSION", "SSLCAUTH", "SSLCIPH", "SSLPEER", "STARTDAEMON",
+    "STATCHL", "TPNAME", "TRPTYPE"
+}
+
 VALID_CHANNEL_ATTRS = {
     "AFFINITY", "ALTDATE", "ALTTIME", "AMQPKA", "AUTOSTART", "BATCHHB", "BATCHINT", 
     "BATCHLIM", "BATCHSZ", "CERTLABL", "CHLTYPE", "CLNTWGHT", "CLUSTER", "CLUSNL", 
@@ -42,7 +51,7 @@ VALID_CHANNEL_ATTRS = {
 }
 
 PORT = 8080
-CONFIG_DIRS = ["mq_checks_config/queues", "mq_checks_config/channels"]
+CONFIG_DIRS = ["mq_checks_config/queues", "mq_checks_config/channels", "mq_checks_config/listeners"]
 STATE_FILE = "mq_checks_config/current_state.json"
 LOG_FILE = "mq_logs/mq_monitor.log" # Upewnij się, że ta ścieżka zgadza się z Twoim Daemonem!
 
@@ -180,6 +189,7 @@ HTML_TEMPLATE = """
                         <option value="ALL">All Types</option>
                         <option value="QUEUE">QUEUE</option>
                         <option value="CHANNEL">CHANNEL</option>
+                        <option value="LISTENER">LISTENER</option>
                     </select>
                 </div>
                 <div class="search-container">
@@ -225,7 +235,7 @@ HTML_TEMPLATE = """
             <form class="rule-form" method="POST" action="/add_rule">
                 <input type="hidden" name="action_type" value="ADD">
                 <div class="form-group"><label>Queue Manager:</label><select name="q_mgr" required>{qm_system_options}</select></div>
-                <div class="form-group"><label>Object Type:</label><select name="obj_type"><option value="QUEUE">QUEUE</option><option value="CHANNEL">CHANNEL</option></select></div>
+                <div class="form-group"><label>Object Type:</label><select name="obj_type"><option value="QUEUE">QUEUE</option><option value="CHANNEL">CHANNEL</option><option value="LISTENER">LISTENER</option></select></div>
                 <div class="form-group"><label>Environment:</label><select name="environment" id="add_environment" style="width: 100%; padding: 8px; border-radius: 4px; background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70;"><option value="prod">prod</option><option value="test">test</option></select></div>
                 <div class="form-group full-width"><label>Object Name:</label><input type="text" name="obj_name" required></div>
                 <div class="form-group"><label>Attribute:</label><input type="text" name="check_type" required></div>
@@ -263,7 +273,7 @@ HTML_TEMPLATE = """
                     </select>
                 </div>
                 <div class="form-group"><label>Queue Manager:</label><select name="q_mgr" id="mod_qm" required>{qm_system_options}</select></div>
-                <div class="form-group"><label>Object Type:</label><select name="obj_type" id="mod_type"><option value="QUEUE">QUEUE</option><option value="CHANNEL">CHANNEL</option></select></div>
+                <div class="form-group"><label>Object Type:</label><select name="obj_type" id="mod_type"><option value="QUEUE">QUEUE</option><option value="CHANNEL">CHANNEL</option><option value="LISTENER">LISTENER</option></select></div>
                 <div class="form-group"><label>Environment:</label><select name="environment" id="mod_environment" style="width: 100%; padding: 8px; border-radius: 4px; background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70;"><option value="prod">prod</option><option value="test">test</option></select></div>
                 <div class="form-group full-width"><label>Object Name:</label><input type="text" name="obj_name" id="mod_name" required></div>
                 <div class="form-group"><label>Attribute:</label><input type="text" name="check_type" id="mod_attr" required></div>
@@ -335,7 +345,7 @@ HTML_TEMPLATE = """
             var rule = rulesDatabase[filepath];
             document.getElementById("mod_orig_filepath").value = filepath;
             document.getElementById("mod_qm").value = rule.queue_manager || "";
-            document.getElementById("mod_type").value = filepath.includes("/queues/") ? "QUEUE" : "CHANNEL";
+            document.getElementById("mod_type").value = filepath.includes("/queues/") ? "QUEUE" : filepath.includes("/listeners/") ? "LISTENER" : "CHANNEL";
             document.getElementById("mod_name").value = rule.object_name || "";
             document.getElementById("mod_attr").value = rule.check_type || "";
             document.getElementById("mod_op").value = rule.operator || ">";
@@ -491,7 +501,12 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
             logging.warning(f"Error reading incident_templates.json: {e}")
         
         for folder in CONFIG_DIRS:
-            obj_type = "QUEUE" if "queues" in folder else "CHANNEL"
+            if "queues" in folder:
+                obj_type = "QUEUE"
+            elif "listeners" in folder:
+                obj_type = "LISTENER"
+            else:
+                obj_type = "CHANNEL"
             if os.path.exists(folder):
                 for filename in os.listdir(folder):
                     if filename.endswith(".json"):
@@ -670,9 +685,17 @@ class SREDashboardHandler(http.server.BaseHTTPRequestHandler):
                 elif obj_type == "CHANNEL" and check_type_upper not in VALID_CHANNEL_ATTRS:
                     self._serve_error(f"Invalid attribute '{check_type}' for CHANNEL. Please refer to IBM MQ documentation for valid attributes.")
                     return
+                elif obj_type == "LISTENER" and check_type_upper not in VALID_LISTENER_ATTRS:
+                    self._serve_error(f"Invalid attribute '{check_type}' for LISTENER. Please refer to IBM MQ documentation for valid attributes.")
+                    return
                 
                 new_rule = {"queue_manager": q_mgr, "object_type": obj_type, "object_name": obj_name, "check_type": check_type_upper, "operator": operator, "threshold": parsed_threshold, "alert_severity": severity, "enable_alert": enable_alert, "enable_check": enable_check, "enable_incident": enable_incident, "interval": interval, "ehi": ehi, "first_line": first_line, "second_line": second_line, "custom_message": custom_message, "environment": env_val if env_val in ['prod', 'test'] else 'prod', "service_offering": service_offering}
-                folder = "mq_checks_config/queues" if obj_type == "QUEUE" else "mq_checks_config/channels"
+                if obj_type == "QUEUE":
+                    folder = "mq_checks_config/queues"
+                elif obj_type == "LISTENER":
+                    folder = "mq_checks_config/listeners"
+                else:
+                    folder = "mq_checks_config/channels"
                 new_filepath = os.path.join(folder, f"{obj_name.replace('/', '_')}.json")
                 
                 if action_type == "ADD" and os.path.exists(new_filepath):

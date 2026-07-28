@@ -143,6 +143,7 @@ def main():
     # Get directories from config
     queues_dir = app_config.get('queues_dir', 'mq_checks_config/queues')
     channels_dir = app_config.get('channels_dir', 'mq_checks_config/channels')
+    listeners_dir = app_config.get('listeners_dir', 'mq_checks_config/listeners')
     
     # Initialize AlertManager conditionally based on configuration
     alert_manager = None
@@ -171,7 +172,7 @@ def main():
         while True:
             # Load check configurations from multiple directories at the beginning of each loop
             # This allows dynamic reloading when Web GUI adds files
-            configs = load_configurations([queues_dir, channels_dir])
+            configs = load_configurations([queues_dir, channels_dir, listeners_dir])
             
             if not configs:
                 logging.info("No configurations found. Waiting for GUI input...")
@@ -272,8 +273,21 @@ def main():
                     config['next_run'] = current_time + config.get('interval', 60)
                     continue
                 
-                # Get the attribute value using universal method
-                value = mq_connector.get_mq_attribute(obj_type, object_name, check_type)
+                # For LISTENER objects, use the bulk get_all_listeners() method
+                # which fetches both config and live telemetry in one shot
+                if obj_type == 'LISTENER':
+                    all_listeners = mq_connector.get_all_listeners()
+                    listener_data = all_listeners.get(object_name)
+                    if listener_data:
+                        value = listener_data.get(check_type)
+                        if value is None:
+                            logging.warning(f"[{queue_manager}] Attribute '{check_type}' not found in merged listener data for '{object_name}'. Available keys: {list(listener_data.keys())}")
+                    else:
+                        logging.warning(f"[{queue_manager}] Listener '{object_name}' not found in DISPLAY LISTENER(*) output. Available: {list(all_listeners.keys())}")
+                        value = None
+                else:
+                    # Get the attribute value using universal method
+                    value = mq_connector.get_mq_attribute(obj_type, object_name, check_type)
                 
                 if value is None:
                     logging.error(f"[{queue_manager}] Attribute '{check_type}' not found for {obj_type} '{object_name}'. Is the attribute valid or MQ CLI available?")
